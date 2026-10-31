@@ -1,1 +1,1 @@
-First version: app skeleton.
+First version: create, edit and present mind maps; .mindmap files with embedded images; recent files; PDF and PNG export.

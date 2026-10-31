@@ -1,1 +1,1 @@
-Eerste versie: basis van de app.
+Eerste versie: mindmaps maken, bewerken en presenteren; .mindmap-bestanden met ingesloten plaatjes; recente bestanden; export naar PDF en PNG.

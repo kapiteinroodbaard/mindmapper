@@ -3,6 +3,28 @@
 A free and open source (GPLv3) mind-mapping app for Android, made for preparing and giving presentations
 on a tablet. No ads, no tracking, no account and no internet access.
 
+## Features
+
+- Central topic in seven shapes with a colour selector
+- Tapered branches (thick at the centre, thinner per level) with automatic colours per main branch
+- Automatic layout around the central topic (balanced, clockwise) or to the right of it
+- Text, an image (embedded, resizable) and an icon per topic
+- Drag to reorder, move to the other side or attach to another topic; undo/redo
+- Presentation mode: full screen, tap a branch to zoom in, back to the overview
+- Office-style files: open and save `.mindmap` files anywhere, autosave, recent files with thumbnails
+- Export to PDF (one page) and PNG, save or share
+- English and Dutch, light and dark theme
+
+## File format
+
+A `.mindmap` file is a ZIP archive:
+
+```
+map.json        the mind map (with "formatVersion"), readable JSON
+images/*.webp   embedded images, downscaled to at most 1600 px
+thumbnail.png   preview used by the recent-files list
+```
+
 Product decisions and roadmap: [docs/exploration-notes.md](docs/exploration-notes.md).
 Specifications and changes: [openspec/](openspec/).
 

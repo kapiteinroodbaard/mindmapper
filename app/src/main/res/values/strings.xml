@@ -10,4 +10,84 @@
     <string name="about_license" translatable="false">GNU GPL v3</string>
     <string name="about_description">Free and open source. No tracking, no ads, no account, no internet access.</string>
     <string name="about_source_code">Source code</string>
+    <string name="about_icons">Icons: Material Symbols by Google, Apache License 2.0.</string>
+
+    <!-- Start screen -->
+    <string name="action_new">New mind map</string>
+    <string name="action_open">Open</string>
+    <string name="recent_title">Recent files</string>
+    <string name="recent_empty">Mind maps you open or save appear here.</string>
+    <string name="recent_pin">Pin</string>
+    <string name="recent_unpin">Unpin</string>
+    <string name="recent_remove">Remove from list</string>
+    <string name="recent_just_now">Just now</string>
+    <string name="recent_unavailable">Not available</string>
+    <string name="recent_more">More options for %1$s</string>
+    <string name="file_unavailable_title">File not available</string>
+    <string name="file_unavailable_text">\"%1$s\" can no longer be opened. It may have been moved or deleted, or access was revoked.</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_ok">OK</string>
+    <string name="error_not_mindmap">This is not a Mindmapper file.</string>
+    <string name="error_damaged">The file is damaged and cannot be opened.</string>
+    <string name="error_newer_version">This file was made with a newer version of Mindmapper. Update the app to open it.</string>
+    <string name="error_file_unavailable">The file could not be opened.</string>
+    <string name="error_save">Saving failed. Use \"Save as\" to choose another location.</string>
+    <string name="error_image">The image could not be added.</string>
+    <string name="error_export">Exporting failed.</string>
+
+    <!-- Editor -->
+    <string name="untitled">Untitled</string>
+    <string name="default_central_topic">Central topic</string>
+    <string name="action_undo">Undo</string>
+    <string name="action_redo">Redo</string>
+    <string name="action_save">Save</string>
+    <string name="action_save_as">Save as</string>
+    <string name="action_autosave">Autosave</string>
+    <string name="action_present">Present</string>
+    <string name="action_more">More options</string>
+    <string name="action_fit">Fit to screen</string>
+    <string name="action_layout_radial">Layout: around the centre</string>
+    <string name="action_layout_right">Layout: to the right</string>
+    <string name="action_style">Central topic style</string>
+    <string name="action_export_pdf">Export as PDF</string>
+    <string name="action_export_png">Export as PNG</string>
+    <string name="action_add_child">Add subtopic</string>
+    <string name="action_add_sibling">Add topic after</string>
+    <string name="action_edit_text">Edit text</string>
+    <string name="action_image">Image</string>
+    <string name="action_icon">Icon</string>
+    <string name="action_delete">Delete</string>
+    <string name="saved">Saved</string>
+    <string name="edit_text_title">Topic text</string>
+    <string name="icon_title">Choose icon</string>
+    <string name="icon_none">No icon</string>
+    <string name="image_title">Image</string>
+    <string name="image_width">Size</string>
+    <string name="image_replace">Replace image</string>
+    <string name="image_remove">Remove image</string>
+    <string name="style_title">Central topic</string>
+    <string name="style_shape">Shape</string>
+    <string name="style_colour">Colour</string>
+    <string name="shape_circle">Circle</string>
+    <string name="shape_ellipse">Ellipse</string>
+    <string name="shape_rectangle">Rectangle</string>
+    <string name="shape_rounded_rectangle">Rounded</string>
+    <string name="shape_diamond">Diamond</string>
+    <string name="shape_hexagon">Hexagon</string>
+    <string name="shape_capsule">Capsule</string>
+    <string name="colour_swatch">Colour %1$s</string>
+    <string name="unsaved_title">Unsaved changes</string>
+    <string name="unsaved_text">Do you want to save the changes to this mind map?</string>
+    <string name="action_discard">Discard</string>
+    <string name="export_title_pdf">Export as PDF</string>
+    <string name="export_title_png">Export as PNG</string>
+    <string name="export_text">The whole map is exported in the light theme.</string>
+    <string name="export_save">Save to file</string>
+    <string name="export_share">Share</string>
+    <string name="exported">Exported</string>
+    <string name="mindmap_canvas">Mind map</string>
+
+    <!-- Presentation -->
+    <string name="action_overview">Overview</string>
+    <string name="action_exit_presentation">Stop presenting</string>
 </resources>

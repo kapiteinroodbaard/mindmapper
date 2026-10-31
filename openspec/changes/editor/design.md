@@ -32,7 +32,7 @@ Compose `Canvas` that calls the shared renderer via `drawIntoCanvas { it.nativeC
 `(scale, offset)` transform. Gestures: `detectTransformGestures` for pan/zoom, `detectTapGestures` for
 select/double-tap, `detectDragGesturesAfterLongPress` for moving topics with a translucent ghost and a
 drop indicator. Topic actions live in a bottom toolbar; map actions in the top bar overflow menu.
-Text editing uses a dialog with a multi-line text field.
+Text editing uses a dialog with a wrapping text field; the keyboard's action key confirms.
 
 ## Risks / Trade-offs
 

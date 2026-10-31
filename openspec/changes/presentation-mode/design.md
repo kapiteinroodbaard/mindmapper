@@ -16,7 +16,7 @@ See proposal.md. Reuses `MapLayout`, the renderer and the viewport transform fro
   reloaded), so presenting never touches the file.
 - Viewport as `(scale, offset)`; focusing computes the bounds of the tapped topic's subtree from
   `MapLayout` and animates scale and offset with `Animatable` (≈ 450 ms, ease in/out), the same "fit
-  bounds" maths as the editor's fit-to-screen.
+  bounds" maths as the editor's fit-to-screen. Focusing never zooms beyond 250 % so text stays readable.
 - Immersive mode with `WindowInsetsControllerCompat.hide(systemBars())` and
   `BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`; restored when leaving.
 - Screen stays on during presentation (`FLAG_KEEP_SCREEN_ON`).

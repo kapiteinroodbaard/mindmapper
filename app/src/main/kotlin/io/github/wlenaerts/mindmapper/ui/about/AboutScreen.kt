@@ -62,6 +62,7 @@ fun AboutScreen(onBack: () -> Unit) {
             Text(stringResource(R.string.about_description))
             Text(stringResource(R.string.about_license_label), style = MaterialTheme.typography.titleSmall)
             Text(stringResource(R.string.about_license))
+            Text(stringResource(R.string.about_icons), style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { uriHandler.openUri(AppInfo.SOURCE_CODE_URL) }) {
                 Text(stringResource(R.string.about_source_code))
             }
