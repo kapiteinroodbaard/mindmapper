@@ -1,0 +1,13 @@
+Mindmapper is a free and open source mind-mapping app for preparing and giving presentations, made for tablets.
+
+<ul>
+<li>Central topic in several shapes and colours</li>
+<li>Tapered branches that automatically get their own colour</li>
+<li>Automatic layout: around the central topic or to the right of it</li>
+<li>Text, an image and an icon per topic</li>
+<li>Presentation mode: full screen, tap a branch to zoom in on it</li>
+<li>Your mind maps are files in a folder of your choice, with all images embedded</li>
+<li>Recent files, export to PDF and PNG</li>
+</ul>
+
+No ads, no tracking, no account and no internet access.

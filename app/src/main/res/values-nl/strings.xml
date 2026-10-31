@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="start_tagline">Mindmaps voor het voorbereiden en geven van presentaties</string>
+    <string name="action_about">Over</string>
+    <string name="action_back">Terug</string>
+    <string name="about_title">Over</string>
+    <string name="about_version">Versie %1$s</string>
+    <string name="about_license_label">Licentie</string>
+    <string name="about_description">Vrije en opensourcesoftware. Geen tracking, geen advertenties, geen account, geen internettoegang.</string>
+    <string name="about_source_code">Broncode</string>
+</resources>

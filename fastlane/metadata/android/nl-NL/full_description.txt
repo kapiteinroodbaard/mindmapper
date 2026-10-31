@@ -1,0 +1,13 @@
+Mindmapper is een vrije en opensource mindmap-app voor het voorbereiden en geven van presentaties, gemaakt voor tablets.
+
+<ul>
+<li>Centraal onderwerp in verschillende vormen en kleuren</li>
+<li>Takken die naar buiten toe dunner worden en automatisch een eigen kleur krijgen</li>
+<li>Automatische indeling: rondom het centrale onderwerp of rechts ervan</li>
+<li>Tekst, een plaatje en een icoon per onderwerp</li>
+<li>Presentatiemodus: volledig scherm, tik op een tak om erop in te zoomen</li>
+<li>Je mindmaps zijn bestanden in een map naar keuze, met alle plaatjes erin</li>
+<li>Recente bestanden, exporteren naar PDF en PNG</li>
+</ul>
+
+Geen reclame, geen tracking, geen account en geen internettoegang.

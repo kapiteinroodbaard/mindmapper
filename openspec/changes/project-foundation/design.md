@@ -21,12 +21,12 @@ app is published on F-Droid, so they are decided here.
 
 ## Decisions
 
-### Single `app` module, packages by feature
-One Gradle module with packages `app` (activity, navigation, theme), `ui.start`, `ui.about`, and later
-`document`, `layout`, `render`, `editor`, `presentation`, `export`. The rendering/layout code must stay
-free of Android UI types where practical so it is unit-testable on the JVM.
-*Alternative:* multi-module from day one. Rejected: more build overhead for a single-developer app; the
-package boundaries can be promoted to modules later if build times demand it.
+### Two modules: `app` and `core`
+`core` is a plain Kotlin/JVM module for everything that does not need Android: the mind-map model,
+layout, colour assignment and file format. `app` holds the activity, Compose UI, Android rendering
+(Canvas, PDF, PNG) and storage access. This keeps the algorithmic code fast to unit-test on the JVM.
+*Alternative:* one module with packages. Rejected: nothing would stop Android types leaking into the
+layout code, and the split costs almost nothing.
 
 ### Kotlin + Jetpack Compose, Material 3, Navigation Compose
 Compose is the current Android UI standard and is fully Apache 2.0. Navigation Compose with type-safe
@@ -90,10 +90,10 @@ configured in `local.properties` (`signing.storeFile`, `signing.storePassword`, 
 the fdroiddata repository and is out of scope.
 
 ### Testing
-JVM unit tests with JUnit; Compose UI tests (`androidx.compose.ui:ui-test-junit4`) as instrumented
-tests for navigation, rotation and theme scenarios. `./gradlew check` runs lint, unit tests and the
-permission check; instrumented tests run with `./gradlew connectedCheck` on a device or emulator
-with API 35+.
+JVM unit tests with JUnit in `core`; Compose UI tests in `app` run on the JVM with Robolectric
+(`./gradlew check`). Tests on ADB-connected devices or emulators are not used for now (user decision),
+so behaviour that Robolectric cannot reproduce faithfully (real edge-to-edge insets, the system app
+language screen) is verified by hand on a device.
 
 ## Risks / Trade-offs
 
@@ -111,9 +111,9 @@ with API 35+.
 
 ## Open Questions
 
-- **Application ID and package name**: proposed `io.github.<username>.mindmapper`; must be confirmed
-  before the first public release, because F-Droid identifies the app by it. It does not affect the
-  structure of this change.
-- **Source repository URL** for the About screen link: set in one constant once the repository is
-  hosted (for example on Codeberg or GitHub).
+- **Application ID and package name**: `io.github.wlenaerts.mindmapper`, matching the user's other
+  apps; confirm before the first public release, because F-Droid identifies the app by it.
+- **Source repository URL** for the About screen link: placeholder
+  `https://github.com/wlenaerts/mindmapper` in `AppInfo.SOURCE_CODE_URL`; update once the repository
+  is hosted.
 - **App name**: "Mindmapper" is used as the working title.
