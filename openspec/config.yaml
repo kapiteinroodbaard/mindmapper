@@ -1,0 +1,14 @@
+schema: spec-driven
+
+context: |
+  Greenfield Android app "Mindmapper": a FOSS mind-mapping editor used to prepare and give presentations.
+  - Must be suitable for F-Droid: no proprietary dependencies (no Google Play Services, Firebase,
+    crash reporting, analytics or ads), no network access, no accounts, no tracking. License: GPLv3.
+  - minSdk 35 (Android 15). Primary device is a tablet in landscape; phones must work but are secondary.
+  - UI languages: Dutch and English. App follows system light/dark theme.
+  - Stack: Kotlin + Jetpack Compose; the mind map itself is drawn by a custom Canvas renderer that is
+    shared by screen, PDF and PNG output.
+  - Files live where the user chooses (Storage Access Framework), never in app-private storage only.
+  - Out of scope (decided): accessibility work, stylus support, keyboard shortcuts, collapsing branches,
+    free positioning of nodes, search, import from other tools, cloud sync, speaker notes, second screen.
+  - Write all OpenSpec artifacts in English.
