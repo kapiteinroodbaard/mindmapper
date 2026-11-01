@@ -33,37 +33,59 @@ class TopicMetrics {
         val imageY: Float,
         val contentWidth: Float,
         val contentHeight: Float,
-    )
+    ) {
+        /** The paint [text] draws with; the caller sets its colour before drawing. */
+        val paint: TextPaint get() = text.paint
+    }
 
-    private val paints = HashMap<Int, TextPaint>()
+    /** Effective text formatting of a topic: [Topic.bold] falls back to the level's default. */
+    data class Format(val bold: Boolean, val italic: Boolean, val underline: Boolean)
 
-    fun paint(depth: Int): TextPaint = paints.getOrPut(depth.coerceAtMost(2)) {
+    fun format(topic: Topic, depth: Int): Format =
+        Format(topic.bold ?: style(depth).bold, topic.italic == true, topic.underline == true)
+
+    private val paints = HashMap<Pair<Int, Format>, TextPaint>()
+
+    fun paint(depth: Int, format: Format): TextPaint = paints.getOrPut(depth.coerceAtMost(2) to format) {
         val style = style(depth)
         TextPaint(TextPaint.ANTI_ALIAS_FLAG).apply {
             textSize = style.textSize
-            typeface = if (style.bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+            val typefaceStyle = when {
+                format.bold && format.italic -> Typeface.BOLD_ITALIC
+                format.bold -> Typeface.BOLD
+                format.italic -> Typeface.ITALIC
+                else -> Typeface.NORMAL
+            }
+            typeface = Typeface.create(Typeface.DEFAULT, typefaceStyle)
+            isUnderlineText = format.underline
         }
     }
 
-    // Layouts are cached by (text, depth); measuring and drawing reuse them.
-    private val textCache = HashMap<Pair<String, Int>, StaticLayout>()
+    // Layouts are cached by (text, depth, format); measuring and drawing reuse them.
+    private val textCache = HashMap<Triple<String, Int, Format>, StaticLayout>()
 
-    private fun textLayout(text: String, depth: Int): StaticLayout = textCache.getOrPut(text to depth.coerceAtMost(2)) {
-        val paint = paint(depth)
-        val style = style(depth)
-        val shown = text.ifEmpty { " " }
-        val natural = ceil(shown.lines().maxOf { paint.measureText(it) }).toInt()
-        val width = natural.coerceIn(1, style.maxTextWidth.toInt())
-        StaticLayout.Builder.obtain(shown, 0, shown.length, paint, width)
-            .setAlignment(if (depth == 0) Layout.Alignment.ALIGN_CENTER else Layout.Alignment.ALIGN_NORMAL)
-            .setIncludePad(false)
-            .build()
-    }
+    private fun textLayout(text: String, depth: Int, format: Format): StaticLayout =
+        textCache.getOrPut(Triple(text, depth.coerceAtMost(2), format)) {
+            val paint = paint(depth, format)
+            val style = style(depth)
+            val shown = text.ifEmpty { " " }
+            val natural = ceil(shown.lines().maxOf { paint.measureText(it) }).toInt()
+            val width = natural.coerceIn(1, style.maxTextWidth.toInt())
+            StaticLayout.Builder.obtain(shown, 0, shown.length, paint, width)
+                .setAlignment(if (depth == 0) Layout.Alignment.ALIGN_CENTER else Layout.Alignment.ALIGN_NORMAL)
+                .setIncludePad(false)
+                .build()
+        }
 
     /** Content measured without the box padding or central shape. */
     fun content(topic: Topic, depth: Int): Content {
-        val text = textLayout(topic.text, depth)
-        val textW = (0 until text.lineCount).maxOf { text.getLineWidth(it) }.coerceAtLeast(if (topic.text.isEmpty()) 24f else 1f)
+        val text = textLayout(topic.text, depth, format(topic, depth))
+        // Wrapped lines can be narrower than the layout and are then centred inside it, so measure the
+        // drawn extent of the lines and shift by its left edge to keep the text centred in the box.
+        val lines = 0 until text.lineCount
+        val inkLeft = lines.minOf { text.getLineLeft(it) }
+        val inkRight = lines.maxOf { text.getLineRight(it) }
+        val textW = (inkRight - inkLeft).coerceAtLeast(if (topic.text.isEmpty()) 24f else 1f)
         val textH = text.height.toFloat()
         val iconSize = if (topic.icon != null) style(depth).textSize * 1.25f else 0f
         val iconGap = if (topic.icon != null) 6f else 0f
@@ -79,7 +101,7 @@ class TopicMetrics {
         val rowY = imageH + imageGap
         return Content(
             text = text,
-            textX = rowX + iconSize + iconGap,
+            textX = rowX + iconSize + iconGap - inkLeft,
             textY = rowY + (rowH - textH) / 2,
             iconSize = iconSize,
             iconX = rowX,

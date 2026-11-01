@@ -37,4 +37,22 @@ class MapExporterTest {
         val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
         assertTrue(maxOf(bitmap.width, bitmap.height) <= 512)
     }
+
+    private fun inkedPixels(m: MindMap): Int {
+        val out = ByteArrayOutputStream()
+        exporter.writePng(m, noImages, out)
+        val bitmap = BitmapFactory.decodeByteArray(out.toByteArray(), 0, out.size())
+        var count = 0
+        for (y in 0 until bitmap.height step 2) for (x in 0 until bitmap.width step 2) if (bitmap.getPixel(x, y) != Color.WHITE) count++
+        return count
+    }
+
+    @Test
+    fun trunkWidthAndTaperRenderAtTheirLimits() {
+        val thin = inkedPixels(map.copy(trunkWidth = MindMap.MIN_TRUNK_WIDTH, trunkTaper = MindMap.MAX_TRUNK_TAPER))
+        val thick = inkedPixels(map.copy(trunkWidth = MindMap.MAX_TRUNK_WIDTH, trunkTaper = MindMap.MIN_TRUNK_TAPER))
+        val thickFastTaper = inkedPixels(map.copy(trunkWidth = MindMap.MAX_TRUNK_WIDTH, trunkTaper = MindMap.MAX_TRUNK_TAPER))
+        assertTrue("thick $thick thin $thin", thick > thin)
+        assertTrue("taper thins the trunk sooner", thickFastTaper < thick)
+    }
 }

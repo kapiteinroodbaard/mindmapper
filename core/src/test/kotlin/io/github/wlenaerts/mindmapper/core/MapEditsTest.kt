@@ -13,6 +13,9 @@ import io.github.wlenaerts.mindmapper.core.edit.setImage
 import io.github.wlenaerts.mindmapper.core.edit.setImageWidth
 import io.github.wlenaerts.mindmapper.core.edit.setLayout
 import io.github.wlenaerts.mindmapper.core.edit.setText
+import io.github.wlenaerts.mindmapper.core.edit.setTextFormat
+import io.github.wlenaerts.mindmapper.core.edit.setTrunk
+import io.github.wlenaerts.mindmapper.core.model.MindMap
 import io.github.wlenaerts.mindmapper.core.layout.MapLayouter
 import io.github.wlenaerts.mindmapper.core.model.CentralShape
 import io.github.wlenaerts.mindmapper.core.model.LayoutKind
@@ -58,6 +61,41 @@ class MapEditsTest {
     fun siblingOfMainBranchKeepsItsSide() {
         val m = map(topic("a").copy(side = Side.LEFT)).addSiblingAfter("a", Topic(id = "b"))
         assertEquals(Side.LEFT, m.find("b")!!.side)
+    }
+
+    @Test
+    fun textFormatStoresOffAsNull() {
+        var m = map(topic("a")).setTextFormat("a", bold = false, italic = true, underline = false)
+        assertEquals(false, m.find("a")!!.bold)
+        assertEquals(true, m.find("a")!!.italic)
+        assertNull(m.find("a")!!.underline)
+        m = m.setTextFormat("a", bold = null, italic = false, underline = true)
+        assertNull(m.find("a")!!.bold)
+        assertNull(m.find("a")!!.italic)
+        assertEquals(true, m.find("a")!!.underline)
+    }
+
+    @Test
+    fun trunkIsClamped() {
+        val m = map().setTrunk(100f, 0f)
+        assertEquals(MindMap.MAX_TRUNK_WIDTH, m.trunkWidth)
+        assertEquals(MindMap.MIN_TRUNK_TAPER, m.trunkTaper)
+        assertEquals(20f, map().setTrunk(20f, 3f).trunkWidth)
+    }
+
+    @Test
+    fun addChildOfCentralTopicTakesSide() {
+        val m = map(topic("a")).addChild("root", Topic(id = "b"), Side.LEFT).addChild("a", Topic(id = "c"), Side.LEFT)
+        assertEquals(Side.LEFT, m.find("b")!!.side)
+        assertNull("side only applies to main branches", m.find("c")!!.side)
+    }
+
+    @Test
+    fun layoutSwitchClearsSides() {
+        val m = map(topic("a").copy(side = Side.LEFT), topic("b").copy(side = Side.RIGHT))
+        assertSame(m, m.setLayout(LayoutKind.RADIAL))
+        val switched = m.setLayout(LayoutKind.RIGHT)
+        assertTrue(switched.root.children.all { it.side == null })
     }
 
     @Test

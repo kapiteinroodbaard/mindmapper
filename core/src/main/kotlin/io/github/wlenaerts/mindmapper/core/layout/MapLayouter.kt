@@ -138,19 +138,29 @@ object MapLayouter {
 
     /**
      * Assigns sides to main branches: fixed ones keep their side, the others are split at one point so
-     * that the first ones go right and the rest left, minimising the height difference.
+     * that the first ones go right and the rest left, minimising the difference in stacked height. The
+     * stacked height of a side includes the [gap] between its branches, so many small branches on one
+     * side are weighed against one large branch on the other.
      */
-    fun balanceSides(fixed: List<Side?>, heights: List<Float>): List<Side> {
+    fun balanceSides(fixed: List<Side?>, heights: List<Float>, gap: Float = verticalGap(1)): List<Side> {
         val n = fixed.size
         var bestK = 0
         var bestDiff = Float.MAX_VALUE
         for (k in 0..n) {
             var right = 0f
             var left = 0f
+            var rightCount = 0
+            var leftCount = 0
             for (i in 0 until n) {
                 val side = fixed[i] ?: if (i < k) Side.RIGHT else Side.LEFT
-                if (side == Side.RIGHT) right += heights[i] else left += heights[i]
+                if (side == Side.RIGHT) {
+                    right += heights[i]; rightCount++
+                } else {
+                    left += heights[i]; leftCount++
+                }
             }
+            right += gap * (rightCount - 1).coerceAtLeast(0)
+            left += gap * (leftCount - 1).coerceAtLeast(0)
             val diff = abs(right - left)
             // On a tie prefer more branches on the right, where reading starts.
             if (diff <= bestDiff) {

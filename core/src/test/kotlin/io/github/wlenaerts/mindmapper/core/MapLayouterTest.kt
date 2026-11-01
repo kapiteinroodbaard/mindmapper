@@ -1,5 +1,6 @@
 package io.github.wlenaerts.mindmapper.core
 
+import io.github.wlenaerts.mindmapper.core.edit.setLayout
 import io.github.wlenaerts.mindmapper.core.layout.MapLayouter
 import io.github.wlenaerts.mindmapper.core.layout.Size
 import io.github.wlenaerts.mindmapper.core.model.LayoutKind
@@ -10,6 +11,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.abs
 import kotlin.random.Random
 
 class MapLayouterTest {
@@ -81,6 +83,25 @@ class MapLayouterTest {
                 assertFalse("overlap ${layout.boxes[i].topicId} / ${layout.boxes[j].topicId} in $kind", rects[i].overlaps(rects[j]))
             }
         }
+    }
+
+    @Test
+    fun gapsCountWhenBalancingManySmallBranches() {
+        // One tall branch against many single topics: without counting the gaps all small ones end up left.
+        val layout = MapLayouter.layout(map(branch("big", 12), *(1..12).map { topic("s$it") }.toTypedArray()), fixedMeasure)
+        fun sideHeight(side: Side): Float = layout.boxes.filter { it.depth >= 1 && it.side == side }.map { it.rect }
+            .reduce { a, b -> a.union(b) }.height
+        val right = sideHeight(Side.RIGHT)
+        val left = sideHeight(Side.LEFT)
+        assertTrue("right $right left $left", abs(right - left) <= 0.25f * maxOf(right, left))
+    }
+
+    @Test
+    fun switchingLayoutClearsChosenSides() {
+        val m = map(topic("1").copy(side = Side.RIGHT), topic("2").copy(side = Side.RIGHT), topic("3").copy(side = Side.RIGHT), topic("4"))
+        val back = m.setLayout(LayoutKind.RIGHT).setLayout(LayoutKind.RADIAL)
+        val layout = MapLayouter.layout(back, fixedMeasure)
+        assertEquals(2, listOf("1", "2", "3", "4").count { layout[it]!!.side == Side.LEFT })
     }
 
     @Test

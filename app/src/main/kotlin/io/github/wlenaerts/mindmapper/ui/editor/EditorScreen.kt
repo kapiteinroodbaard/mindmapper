@@ -17,8 +17,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
@@ -71,6 +69,7 @@ private sealed interface EditorDialog {
     data class ChooseIcon(val topicId: String) : EditorDialog
     data class EditImage(val topicId: String) : EditorDialog
     data object Style : EditorDialog
+    data object Rename : EditorDialog
     data object Unsaved : EditorDialog
     data class Export(val format: ExportFormat) : EditorDialog
 }
@@ -90,6 +89,7 @@ fun EditorScreen(viewModel: EditorViewModel, onClose: () -> Unit, onPresent: () 
     var imageTarget by remember { mutableStateOf<String?>(null) }
     var closeAfterSave by remember { mutableStateOf(false) }
     var pendingExport by remember { mutableStateOf<ExportFormat?>(null) }
+    var dragging by remember { mutableStateOf(false) }
 
     val savedText = stringResource(R.string.saved)
     val exportedText = stringResource(R.string.exported)
@@ -168,11 +168,17 @@ fun EditorScreen(viewModel: EditorViewModel, onClose: () -> Unit, onPresent: () 
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        if (state.dirty && !state.autosaveActive) "$title •" else title,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            if (state.dirty && !state.autosaveActive) "$title •" else title,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        IconButton(onClick = { dialog = EditorDialog.Rename }, enabled = state.map != null) {
+                            Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.action_rename))
+                        }
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = { leave() }) {
@@ -218,10 +224,6 @@ fun EditorScreen(viewModel: EditorViewModel, onClose: () -> Unit, onPresent: () 
                                 trailingIcon = { RadioButton(selected = state.map?.layout == LayoutKind.RIGHT, onClick = null) },
                                 onClick = { menuOpen = false; viewModel.setLayout(LayoutKind.RIGHT) },
                             )
-                            DropdownMenuItem(text = { Text(stringResource(R.string.action_style)) }, onClick = {
-                                menuOpen = false
-                                dialog = EditorDialog.Style
-                            })
                             HorizontalDivider()
                             DropdownMenuItem(text = { Text(stringResource(R.string.action_export_pdf)) }, onClick = {
                                 menuOpen = false
@@ -259,11 +261,15 @@ fun EditorScreen(viewModel: EditorViewModel, onClose: () -> Unit, onPresent: () 
                     onTap = viewModel::select,
                     onDoubleTap = { id -> viewModel.select(id); dialog = EditorDialog.EditText(id) },
                     onDrop = viewModel::drop,
+                    onDragActiveChange = { dragging = it },
                 )
-                state.selectedId?.let { selected ->
-                    TopicToolbar(
-                        isRoot = selected == map.root.id,
-                        modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(16.dp),
+                val selectedBox = state.selectedId?.let { layout[it] }
+                if (selectedBox != null && !dragging) {
+                    val selected = selectedBox.topicId
+                    TopicActions(
+                        box = selectedBox,
+                        viewport = vp,
+                        radial = map.layout == LayoutKind.RADIAL,
                         onAddChild = viewModel::addChild,
                         onAddSibling = viewModel::addSibling,
                         onEditText = { dialog = EditorDialog.EditText(selected) },
@@ -271,7 +277,13 @@ fun EditorScreen(viewModel: EditorViewModel, onClose: () -> Unit, onPresent: () 
                             if (map.find(selected)?.image != null) dialog = EditorDialog.EditImage(selected) else chooseImage(selected)
                         },
                         onIcon = { dialog = EditorDialog.ChooseIcon(selected) },
+                        onStyle = { dialog = EditorDialog.Style },
                         onDelete = viewModel::deleteSelected,
+                    )
+                    // Every topic action is on the map now; the toolbar is kept for actions that belong there.
+                    TopicToolbar(
+                        actions = emptyList(),
+                        modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(16.dp),
                     )
                 }
             }
@@ -281,7 +293,13 @@ fun EditorScreen(viewModel: EditorViewModel, onClose: () -> Unit, onPresent: () 
     val map = state.map
     when (val d = dialog) {
         is EditorDialog.EditText -> map?.find(d.topicId)?.let { topic ->
-            TextDialog(topic.text, onConfirm = { viewModel.setText(d.topicId, it); dialog = null }, onDismiss = { dialog = null })
+            val format = viewModel.textFormat(d.topicId) ?: return@let
+            TextDialog(
+                topic.text,
+                format,
+                onConfirm = { text, newFormat -> viewModel.setTextAndFormat(d.topicId, text, newFormat); dialog = null },
+                onDismiss = { dialog = null },
+            )
         }
         is EditorDialog.ChooseIcon -> IconDialog(
             current = map?.find(d.topicId)?.icon,
@@ -301,11 +319,19 @@ fun EditorScreen(viewModel: EditorViewModel, onClose: () -> Unit, onPresent: () 
             StyleDialog(
                 shape = it.centralShape,
                 color = it.centralColor,
+                trunkWidth = it.trunkWidth,
+                trunkTaper = it.trunkTaper,
                 onShape = viewModel::setCentralShape,
                 onColor = viewModel::setCentralColor,
+                onTrunk = viewModel::setTrunk,
                 onDismiss = { dialog = null },
             )
         }
+        EditorDialog.Rename -> RenameDialog(
+            initial = state.title.ifBlank { viewModel.saveFileName().removeSuffix(".mindmap") },
+            onConfirm = { viewModel.rename(it); dialog = null },
+            onDismiss = { dialog = null },
+        )
         EditorDialog.Unsaved -> UnsavedDialog(
             onSave = { dialog = null; save(thenClose = true) },
             onDiscard = { dialog = null; onClose() },
@@ -337,33 +363,20 @@ fun EditorScreen(viewModel: EditorViewModel, onClose: () -> Unit, onPresent: () 
     }
 }
 
+/** An action in the bottom toolbar. */
+class ToolbarAction(val label: String, val icon: @Composable () -> Unit, val onClick: () -> Unit)
+
+/** The bottom toolbar for the selected topic; shows nothing while it has no [actions]. */
 @Composable
-private fun TopicToolbar(
-    isRoot: Boolean,
-    modifier: Modifier,
-    onAddChild: () -> Unit,
-    onAddSibling: () -> Unit,
-    onEditText: () -> Unit,
-    onImage: () -> Unit,
-    onIcon: () -> Unit,
-    onDelete: () -> Unit,
-) {
+private fun TopicToolbar(actions: List<ToolbarAction>, modifier: Modifier) {
+    if (actions.isEmpty()) return
     Surface(modifier = modifier, shape = RoundedCornerShape(28.dp), tonalElevation = 6.dp, shadowElevation = 6.dp) {
         Row(
             Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ToolbarButton(stringResource(R.string.action_add_child), onAddChild) { Icon(Icons.Filled.Add, null) }
-            if (!isRoot) {
-                ToolbarButton(stringResource(R.string.action_add_sibling), onAddSibling) { Icon(painterResource(R.drawable.ic_add_sibling), null) }
-            }
-            ToolbarButton(stringResource(R.string.action_edit_text), onEditText) { Icon(Icons.Filled.Edit, null) }
-            ToolbarButton(stringResource(R.string.action_image), onImage) { Icon(painterResource(R.drawable.ic_image), null) }
-            ToolbarButton(stringResource(R.string.action_icon), onIcon) { Icon(painterResource(R.drawable.mm_icon_star), null) }
-            if (!isRoot) {
-                ToolbarButton(stringResource(R.string.action_delete), onDelete) { Icon(Icons.Filled.Delete, null) }
-            }
+            actions.forEach { ToolbarButton(it.label, it.onClick, it.icon) }
         }
     }
 }

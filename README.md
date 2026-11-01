@@ -6,12 +6,17 @@ on a tablet. No ads, no tracking, no account and no internet access.
 ## Features
 
 - Central topic in seven shapes with a colour selector
-- Tapered branches (thick at the centre, thinner per level) with automatic colours per main branch
+- Tapered branches (thick at the centre, thinner per level) with automatic colours per main branch;
+  adjustable trunk width and taper
+- Topic actions right on the map: "+" handles to add subtopics and topics, and an action bar on the
+  selected topic
+- Bold, italic and underlined topic text
 - Automatic layout around the central topic (balanced, clockwise) or to the right of it
 - Text, an image (embedded, resizable) and an icon per topic
 - Drag to reorder, move to the other side or attach to another topic; undo/redo
 - Presentation mode: full screen, tap a branch to zoom in, back to the overview
-- Office-style files: open and save `.mindmap` files anywhere, autosave, recent files with thumbnails
+- Office-style files: open and save `.mindmap` files anywhere, rename them from the editor, autosave,
+  recent files with thumbnails
 - Export to PDF (one page) and PNG, save or share
 - English and Dutch, light and dark theme
 

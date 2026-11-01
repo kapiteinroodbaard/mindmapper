@@ -50,11 +50,18 @@ data class TopicImage(val path: String, val width: Float, val aspect: Float) {
     }
 }
 
-/** A topic in the tree. [side] is only meaningful for main branches (children of the central topic). */
+/**
+ * A topic in the tree. [side] is only meaningful for main branches (children of the central topic).
+ * [bold] null means the default for the topic's level (bold for the central topic and main branches);
+ * [italic] and [underline] are null when off, so they are left out of the file.
+ */
 @Serializable
 data class Topic(
     val id: String = newId(),
     val text: String = "",
+    val bold: Boolean? = null,
+    val italic: Boolean? = null,
+    val underline: Boolean? = null,
     val icon: String? = null,
     val image: TopicImage? = null,
     val side: Side? = null,
@@ -68,6 +75,10 @@ data class MindMap(
     val centralShape: CentralShape = CentralShape.ROUNDED_RECTANGLE,
     @Serializable(with = HexColorSerializer::class)
     val centralColor: Int = DEFAULT_CENTRAL_COLOR,
+    /** Width of the main branches where they leave the central topic, in layout units. */
+    val trunkWidth: Float = DEFAULT_TRUNK_WIDTH,
+    /** How quickly main branches thin out: 1 is even, higher values thin out sooner. */
+    val trunkTaper: Float = DEFAULT_TRUNK_TAPER,
     val root: Topic,
 ) {
     /** Every topic in depth-first order, starting with the central topic. */
@@ -105,6 +116,12 @@ data class MindMap(
 
     companion object {
         const val DEFAULT_CENTRAL_COLOR: Int = 0xFF3D5A80.toInt()
+        const val DEFAULT_TRUNK_WIDTH = 12f
+        const val MIN_TRUNK_WIDTH = 5f
+        const val MAX_TRUNK_WIDTH = 40f
+        const val DEFAULT_TRUNK_TAPER = 1f
+        const val MIN_TRUNK_TAPER = 1f
+        const val MAX_TRUNK_TAPER = 5f
     }
 }
 

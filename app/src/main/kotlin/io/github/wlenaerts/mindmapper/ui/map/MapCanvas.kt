@@ -53,6 +53,7 @@ fun MapCanvas(
     onTap: (topicId: String?) -> Unit = {},
     onDoubleTap: (topicId: String) -> Unit = {},
     onDrop: ((draggedId: String, target: DropTarget) -> Unit)? = null,
+    onDragActiveChange: (Boolean) -> Unit = {},
 ) {
     val theme = if (isSystemInDarkTheme()) MapTheme.Dark else MapTheme.Light
     val density = LocalDensity.current.density
@@ -63,6 +64,7 @@ fun MapCanvas(
     val currentOnTap by rememberUpdatedState(onTap)
     val currentOnDoubleTap by rememberUpdatedState(onDoubleTap)
     val currentOnDrop by rememberUpdatedState(onDrop)
+    val currentOnDragActiveChange by rememberUpdatedState(onDragActiveChange)
 
     var draggedId by remember { mutableStateOf<String?>(null) }
     var dragStart by remember { mutableStateOf(Offset.Zero) }
@@ -98,6 +100,7 @@ fun MapCanvas(
                         draggedId = id
                         dragStart = position
                         dragNow = position
+                        currentOnDragActiveChange(true)
                     }
                 },
                 onDrag = { change, amount ->
@@ -113,10 +116,12 @@ fun MapCanvas(
                     val id = draggedId
                     val target = dropTarget
                     if (id != null && target != null) currentOnDrop?.invoke(id, target)
+                    if (id != null) currentOnDragActiveChange(false)
                     draggedId = null
                     dropTarget = null
                 },
                 onDragCancel = {
+                    if (draggedId != null) currentOnDragActiveChange(false)
                     draggedId = null
                     dropTarget = null
                 },

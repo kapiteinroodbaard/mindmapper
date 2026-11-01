@@ -85,4 +85,13 @@
 
     <string name="action_overview">Overzicht</string>
     <string name="action_exit_presentation">Stoppen met presenteren</string>
+    <string name="action_rename">Naam wijzigen</string>
+    <string name="rename_title">Naam van de mindmap</string>
+    <string name="rename_invalid">Geef een naam zonder \\ / : * ? \" &lt; &gt; |</string>
+    <string name="rename_not_possible">Hernoemen kan hier niet. Gebruik \"Opslaan als\" om onder een nieuwe naam op te slaan.</string>
+    <string name="format_bold">Vet</string>
+    <string name="format_italic">Cursief</string>
+    <string name="format_underline">Onderstrepen</string>
+    <string name="style_trunk_width">Dikte stam</string>
+    <string name="style_trunk_taper">Versmalling stam</string>
 </resources>

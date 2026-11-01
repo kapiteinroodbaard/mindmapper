@@ -25,15 +25,34 @@ fun MindMap.setImageWidth(id: String, width: Float): MindMap = updateTopic(id) {
     topic.image?.let { topic.copy(image = it.copy(width = width.coerceIn(TopicImage.MIN_WIDTH, TopicImage.MAX_WIDTH))) } ?: topic
 }
 
-fun MindMap.setLayout(layout: LayoutKind): MindMap = copy(layout = layout)
+/**
+ * Switches the layout. Sides chosen for main branches are cleared on a switch, so switching to the
+ * layout around the centre always starts from an evenly balanced distribution.
+ */
+fun MindMap.setLayout(layout: LayoutKind): MindMap {
+    if (layout == this.layout) return this
+    return copy(layout = layout, root = root.copy(children = root.children.map { it.copy(side = null) }))
+}
+
+/** Sets bold, italic and underline of topic [id]; false for italic and underline is stored as null. */
+fun MindMap.setTextFormat(id: String, bold: Boolean?, italic: Boolean, underline: Boolean): MindMap = updateTopic(id) {
+    it.copy(bold = bold, italic = italic.takeIf { on -> on }, underline = underline.takeIf { on -> on })
+}
+
+fun MindMap.setTrunk(width: Float, taper: Float): MindMap = copy(
+    trunkWidth = width.coerceIn(MindMap.MIN_TRUNK_WIDTH, MindMap.MAX_TRUNK_WIDTH),
+    trunkTaper = taper.coerceIn(MindMap.MIN_TRUNK_TAPER, MindMap.MAX_TRUNK_TAPER),
+)
 
 fun MindMap.setCentralShape(shape: CentralShape): MindMap = copy(centralShape = shape)
 
 fun MindMap.setCentralColor(color: Int): MindMap = copy(centralColor = color)
 
-/** Appends [child] as the last child of [parentId]. */
-fun MindMap.addChild(parentId: String, child: Topic): MindMap =
-    updateTopic(parentId) { it.copy(children = it.children + child) }
+/** Appends [child] as the last child of [parentId]. Under the central topic, [side] places the new main branch. */
+fun MindMap.addChild(parentId: String, child: Topic, side: Side? = null): MindMap {
+    val placed = if (parentId == root.id) child.copy(side = side) else child
+    return updateTopic(parentId) { it.copy(children = it.children + placed) }
+}
 
 /** Inserts [sibling] directly after topic [id]; not possible for the central topic. */
 fun MindMap.addSiblingAfter(id: String, sibling: Topic): MindMap {

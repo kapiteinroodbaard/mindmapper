@@ -90,4 +90,13 @@
     <!-- Presentation -->
     <string name="action_overview">Overview</string>
     <string name="action_exit_presentation">Stop presenting</string>
+    <string name="action_rename">Rename</string>
+    <string name="rename_title">Mind map name</string>
+    <string name="rename_invalid">Enter a name without \\ / : * ? \" &lt; &gt; |</string>
+    <string name="rename_not_possible">Renaming is not possible here. Use \"Save as\" to save under a new name.</string>
+    <string name="format_bold">Bold</string>
+    <string name="format_italic">Italic</string>
+    <string name="format_underline">Underline</string>
+    <string name="style_trunk_width">Trunk width</string>
+    <string name="style_trunk_taper">Trunk taper</string>
 </resources>

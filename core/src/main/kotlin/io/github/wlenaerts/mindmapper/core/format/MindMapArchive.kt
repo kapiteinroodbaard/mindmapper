@@ -64,11 +64,15 @@ object MindMapArchive {
         val centralShape: CentralShape = CentralShape.ROUNDED_RECTANGLE,
         @Serializable(with = HexColorSerializer::class)
         val centralColor: Int = MindMap.DEFAULT_CENTRAL_COLOR,
+        val trunkWidth: Float = MindMap.DEFAULT_TRUNK_WIDTH,
+        val trunkTaper: Float = MindMap.DEFAULT_TRUNK_TAPER,
         val root: Topic,
     )
 
     fun encodeMap(map: MindMap): String =
-        json.encodeToString(MapFile.serializer(), MapFile(FORMAT_VERSION, map.layout, map.centralShape, map.centralColor, map.root))
+        json.encodeToString(MapFile.serializer(), MapFile(
+            FORMAT_VERSION, map.layout, map.centralShape, map.centralColor, map.trunkWidth, map.trunkTaper, map.root,
+        ))
 
     fun decodeMap(text: String): MindMap {
         val element = try {
@@ -89,7 +93,14 @@ object MindMapArchive {
         } catch (e: IllegalArgumentException) {
             throw MindMapFormatException.Damaged(e)
         }
-        return MindMap(file.layout, file.centralShape, file.centralColor, file.root)
+        return MindMap(
+            file.layout,
+            file.centralShape,
+            file.centralColor,
+            file.trunkWidth.coerceIn(MindMap.MIN_TRUNK_WIDTH, MindMap.MAX_TRUNK_WIDTH),
+            file.trunkTaper.coerceIn(MindMap.MIN_TRUNK_TAPER, MindMap.MAX_TRUNK_TAPER),
+            file.root,
+        )
     }
 
     /** Builds the complete archive in memory, so a failure never leaves a half-written file behind. */

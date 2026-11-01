@@ -29,11 +29,13 @@ class MindMapArchiveTest {
         layout = LayoutKind.RIGHT,
         centralShape = CentralShape.DIAMOND,
         centralColor = 0xFF123456.toInt(),
+        trunkWidth = 28f,
+        trunkTaper = 3.5f,
         root = Topic(
             id = "root", text = "Centre",
             children = listOf(
                 Topic(id = "a", text = "A", icon = "star", image = imageA, side = Side.LEFT, children = listOf(Topic(id = "a1", text = "A1"))),
-                Topic(id = "b", text = "B\nsecond line", image = imageB),
+                Topic(id = "b", text = "B\nsecond line", bold = false, italic = true, underline = true, image = imageB),
             ),
         ),
     )
@@ -117,5 +119,31 @@ class MindMapArchiveTest {
     fun ignoresUnknownKeys() {
         val json = """{"formatVersion": 1, "future": true, "root": {"id": "r", "text": "x", "colour": "red"}}"""
         assertEquals("x", MindMapArchive.decodeMap(json).root.text)
+    }
+
+    @Test
+    fun fileWithoutTrunkAndFormattingUsesDefaults() {
+        val m = MindMapArchive.decodeMap("""{"formatVersion": 1, "root": {"id": "r", "text": "x"}}""")
+        assertEquals(MindMap.DEFAULT_TRUNK_WIDTH, m.trunkWidth)
+        assertEquals(MindMap.DEFAULT_TRUNK_TAPER, m.trunkTaper)
+        assertEquals(null, m.root.bold)
+        assertEquals(null, m.root.italic)
+        assertEquals(null, m.root.underline)
+    }
+
+    @Test
+    fun outOfRangeTrunkIsClamped() {
+        val m = MindMapArchive.decodeMap("""{"formatVersion": 1, "trunkWidth": 100, "trunkTaper": 0, "root": {"id": "r", "text": "x"}}""")
+        assertEquals(MindMap.MAX_TRUNK_WIDTH, m.trunkWidth)
+        assertEquals(MindMap.MIN_TRUNK_TAPER, m.trunkTaper)
+    }
+
+    @Test
+    fun unsetFormattingIsLeftOut() {
+        val json = MindMapArchive.encodeMap(newMindMap("x"))
+        assertFalse(json.contains("bold"))
+        assertFalse(json.contains("italic"))
+        assertFalse(json.contains("underline"))
+        assertTrue(json.contains("\"formatVersion\": 1"))
     }
 }

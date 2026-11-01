@@ -20,18 +20,23 @@ import io.github.wlenaerts.mindmapper.core.edit.setImage
 import io.github.wlenaerts.mindmapper.core.edit.setImageWidth
 import io.github.wlenaerts.mindmapper.core.edit.setLayout
 import io.github.wlenaerts.mindmapper.core.edit.setText
+import io.github.wlenaerts.mindmapper.core.edit.setTextFormat
+import io.github.wlenaerts.mindmapper.core.edit.setTrunk
 import io.github.wlenaerts.mindmapper.core.format.MindMapDocument
 import io.github.wlenaerts.mindmapper.core.layout.MapLayout
 import io.github.wlenaerts.mindmapper.core.model.CentralShape
 import io.github.wlenaerts.mindmapper.core.model.LayoutKind
 import io.github.wlenaerts.mindmapper.core.model.MindMap
+import io.github.wlenaerts.mindmapper.core.model.Side
 import io.github.wlenaerts.mindmapper.core.model.Topic
 import io.github.wlenaerts.mindmapper.core.model.newMindMap
 import io.github.wlenaerts.mindmapper.document.ImageCache
 import io.github.wlenaerts.mindmapper.document.ImageImporter
+import io.github.wlenaerts.mindmapper.document.isValidTitle
 import io.github.wlenaerts.mindmapper.document.titleFromFileName
 import io.github.wlenaerts.mindmapper.export.ExportFormat
 import io.github.wlenaerts.mindmapper.render.MapRenderer
+import io.github.wlenaerts.mindmapper.render.TopicMetrics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -156,10 +161,11 @@ class EditorViewModel(application: Application, savedState: SavedStateHandle) : 
 
     fun consumeMessage() = _state.update { it.copy(message = null) }
 
-    fun addChild() {
+    /** Adds a child to the selected topic; [side] places a new main branch in the radial layout. */
+    fun addChild(side: Side? = null) {
         val parent = _state.value.selectedId ?: return
         val topic = Topic()
-        edit({ it.addChild(parent, topic) }, select = topic.id, editText = topic.id)
+        edit({ it.addChild(parent, topic, side) }, select = topic.id, editText = topic.id)
     }
 
     fun addSibling() {
@@ -171,6 +177,21 @@ class EditorViewModel(application: Application, savedState: SavedStateHandle) : 
     }
 
     fun setText(id: String, text: String) = edit({ it.setText(id, text.trimEnd()) })
+
+    /** The formatting topic [id] is drawn with, including the bold default of its level. */
+    fun textFormat(id: String): TopicMetrics.Format? {
+        val map = _state.value.map ?: return null
+        val topic = map.find(id) ?: return null
+        return renderer.metrics.format(topic, map.depthOf(id))
+    }
+
+    /** Sets text and formatting as one edit; bold equal to the level's default is stored as "default". */
+    fun setTextAndFormat(id: String, text: String, format: TopicMetrics.Format) {
+        val map = _state.value.map ?: return
+        val defaultBold = renderer.metrics.style(map.depthOf(id)).bold
+        val bold = format.bold.takeIf { it != defaultBold }
+        edit({ it.setText(id, text.trimEnd()).setTextFormat(id, bold, format.italic, format.underline) })
+    }
 
     fun deleteSelected() {
         val id = _state.value.selectedId ?: return
@@ -200,6 +221,49 @@ class EditorViewModel(application: Application, savedState: SavedStateHandle) : 
     fun setCentralShape(shape: CentralShape) = edit({ it.setCentralShape(shape) })
 
     fun setCentralColor(color: Int) = edit({ it.setCentralColor(color) })
+
+    fun setTrunk(width: Float, taper: Float) = edit({ it.setTrunk(width, taper) })
+
+    /**
+     * Renames the map to [name]. A saved map's file is renamed; a never-saved map keeps the name as the
+     * suggested file name. When the file cannot be renamed, a message suggests "Save as".
+     */
+    fun rename(name: String, onDone: (Boolean) -> Unit = {}) {
+        val title = name.trim()
+        val s = _state.value
+        if (!isValidTitle(title)) return onDone(false)
+        val uri = s.uri
+        if (uri == null) {
+            _state.update { it.copy(title = title) }
+            return onDone(true)
+        }
+        if (title == s.title) return onDone(true)
+        if (!s.writable) {
+            _state.update { it.copy(message = R.string.rename_not_possible) }
+            return onDone(false)
+        }
+        // A pending autosave must not write to the old location after the rename.
+        autosaveJob?.cancel()
+        viewModelScope.launch {
+            val renamed = withContext(Dispatchers.IO) {
+                runCatching { app.repository.rename(uri, "$title.mindmap") }.getOrNull()?.also { newUri ->
+                    if (newUri != uri) {
+                        app.repository.persistAccess(newUri, Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                        app.repository.releaseAccess(uri)
+                        app.recentFiles.remove(uri.toString())
+                    }
+                    app.recentFiles.touch(newUri.toString(), app.repository.displayName(newUri))
+                }
+            }
+            if (renamed == null) {
+                _state.update { it.copy(message = R.string.rename_not_possible) }
+            } else {
+                _state.update { it.copy(uri = renamed, title = titleFromFileName(app.repository.displayName(renamed))) }
+            }
+            scheduleAutosave()
+            onDone(renamed != null)
+        }
+    }
 
     fun drop(draggedId: String, target: DropTarget) = edit({ target.apply(it, draggedId) }, select = draggedId)
 

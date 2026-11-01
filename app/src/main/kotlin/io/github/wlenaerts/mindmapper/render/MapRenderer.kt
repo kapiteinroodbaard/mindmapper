@@ -17,6 +17,7 @@ import io.github.wlenaerts.mindmapper.core.model.MindMap
 import io.github.wlenaerts.mindmapper.core.model.Side
 import io.github.wlenaerts.mindmapper.core.model.Topic
 import kotlin.math.hypot
+import kotlin.math.pow
 
 /** Supplies decoded images for topic image paths; null while unavailable. */
 fun interface ImageSource {
@@ -51,7 +52,7 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
         for (box in layout.boxes) {
             if (box.depth == 0 || box.topicId in hiddenIds) continue
             val parent = layout[box.parentId ?: continue] ?: continue
-            drawBranch(canvas, parent, box, theme.branchColor(box.colorSlot))
+            drawBranch(canvas, map, parent, box, theme.branchColor(box.colorSlot))
         }
         for (box in layout.boxes) {
             if (box.topicId in hiddenIds) continue
@@ -70,21 +71,21 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
         canvas.translate(dx, dy)
         if (box.depth >= 2) {
             stroke.color = theme.branchColor(box.colorSlot)
-            stroke.strokeWidth = branchWidths(box.depth).second
+            stroke.strokeWidth = branchWidths(map, box.depth).second
             canvas.drawLine(box.rect.left, box.rect.bottom, box.rect.right, box.rect.bottom, stroke)
         }
         drawTopic(canvas, map, topic, box, theme, images)
         canvas.restore()
     }
 
-    /** Start and end width of the branch leading to a topic at [depth]. */
-    private fun branchWidths(depth: Int): Pair<Float, Float> = when (depth) {
-        1 -> 12f to 5f
+    /** Start and end width of the branch leading to a topic at [depth]; main branches follow the map's trunk width. */
+    private fun branchWidths(map: MindMap, depth: Int): Pair<Float, Float> = when (depth) {
+        1 -> map.trunkWidth to 5f
         2 -> 4.5f to 2.5f
         else -> 2.5f to 1.5f
     }
 
-    private fun drawBranch(canvas: Canvas, parent: TopicBox, child: TopicBox, color: Int) {
+    private fun drawBranch(canvas: Canvas, map: MindMap, parent: TopicBox, child: TopicBox, color: Int) {
         val right = child.side != Side.LEFT
         val (startX, startY) = when {
             parent.depth == 0 -> parent.rect.centerX to parent.rect.centerY
@@ -93,9 +94,16 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
         }
         val endX = if (right) child.rect.left else child.rect.right
         val endY = if (child.depth == 1) child.rect.centerY else child.rect.bottom
-        val (w0, w1) = branchWidths(child.depth)
+        val (w0, w1) = branchWidths(map, child.depth)
         fill.color = color
-        canvas.drawPath(ribbon(startX, startY, endX, endY, w0, w1), fill)
+        // A main branch starts inside the central topic: it keeps its full width up to the topic's edge and
+        // only tapers from there, at the map's taper rate.
+        val path = if (child.depth == 1) {
+            ribbon(startX, startY, endX, endY, w0, w1, taper = map.trunkTaper, inside = parent.rect)
+        } else {
+            ribbon(startX, startY, endX, endY, w0, w1)
+        }
+        canvas.drawPath(path, fill)
         if (child.depth >= 2) {
             // Subtopics have no box: an underline in the branch colour carries the topic.
             stroke.color = color
@@ -104,25 +112,41 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
         }
     }
 
-    /** A filled cubic Bézier ribbon whose width tapers from [w0] to [w1]. */
-    private fun ribbon(x0: Float, y0: Float, x3: Float, y3: Float, w0: Float, w1: Float): Path {
+    /**
+     * A filled cubic Bézier ribbon whose width tapers from [w0] to [w1]. The part of the curve within [inside]
+     * keeps width [w0]; beyond it the width follows `(1 - t)^taper`, so a higher [taper] thins out sooner.
+     */
+    private fun ribbon(
+        x0: Float, y0: Float, x3: Float, y3: Float, w0: Float, w1: Float,
+        taper: Float = 1f, inside: Rect? = null,
+    ): Path {
         val mx = (x0 + x3) / 2
         val c1x = mx
         val c1y = y0
         val c2x = mx
         val c2y = y3
-        val steps = 28
+        val steps = 40
+        fun point(t: Float): Pair<Float, Float> {
+            val u = 1 - t
+            return (u * u * u * x0 + 3 * u * u * t * c1x + 3 * u * t * t * c2x + t * t * t * x3) to
+                (u * u * u * y0 + 3 * u * u * t * c1y + 3 * u * t * t * c2y + t * t * t * y3)
+        }
+        // Curve parameter where the ribbon leaves [inside].
+        val exit = inside?.let { r ->
+            (0..steps).map { it / steps.toFloat() }.firstOrNull { t -> point(t).let { (x, y) -> !r.contains(x, y) } }
+        } ?: 0f
         val upper = FloatArray((steps + 1) * 2)
         val lower = FloatArray((steps + 1) * 2)
         for (i in 0..steps) {
             val t = i / steps.toFloat()
             val u = 1 - t
-            val x = u * u * u * x0 + 3 * u * u * t * c1x + 3 * u * t * t * c2x + t * t * t * x3
-            val y = u * u * u * y0 + 3 * u * u * t * c1y + 3 * u * t * t * c2y + t * t * t * y3
+            val (x, y) = point(t)
             val dx = 3 * u * u * (c1x - x0) + 6 * u * t * (c2x - c1x) + 3 * t * t * (x3 - c2x)
             val dy = 3 * u * u * (c1y - y0) + 6 * u * t * (c2y - c1y) + 3 * t * t * (y3 - c2y)
             val len = hypot(dx, dy).takeIf { it > 0.0001f } ?: 1f
-            val half = (w0 + (w1 - w0) * t) / 2
+            val progress = if (t <= exit) 0f else (t - exit) / (1 - exit)
+            val remaining = (1 - progress).toDouble().pow(taper.toDouble()).toFloat()
+            val half = (w1 + (w0 - w1) * remaining) / 2
             val nx = -dy / len * half
             val ny = dx / len * half
             upper[i * 2] = x + nx; upper[i * 2 + 1] = y + ny
@@ -173,8 +197,7 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
             drawable.setTint(textColor)
             drawable.draw(canvas)
         }
-        val paint = metrics.paint(box.depth)
-        paint.color = textColor
+        c.paint.color = textColor
         canvas.save()
         canvas.translate(originX + c.textX, originY + c.textY)
         c.text.draw(canvas)

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -21,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -44,6 +46,12 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.TextRange
@@ -52,31 +60,101 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import io.github.wlenaerts.mindmapper.R
 import io.github.wlenaerts.mindmapper.core.model.CentralShape
+import io.github.wlenaerts.mindmapper.core.model.MindMap
 import io.github.wlenaerts.mindmapper.core.model.TopicImage
 import io.github.wlenaerts.mindmapper.export.ExportFormat
+import io.github.wlenaerts.mindmapper.document.isValidTitle
 import io.github.wlenaerts.mindmapper.render.IconSet
+import io.github.wlenaerts.mindmapper.render.TopicMetrics
 
 @Composable
-fun TextDialog(initial: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+fun TextDialog(
+    initial: String,
+    format: TopicMetrics.Format,
+    onConfirm: (String, TopicMetrics.Format) -> Unit,
+    onDismiss: () -> Unit,
+) {
     var value by remember { mutableStateOf(TextFieldValue(initial, TextRange(0, initial.length))) }
+    var current by remember { mutableStateOf(format) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.edit_text_title)) },
         text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { value = it },
+                    modifier = Modifier.fillMaxWidth().focusRequester(focus).testTag("topic_text"),
+                    minLines = 1,
+                    maxLines = 6,
+                    // Preview of the formatting the topic will be drawn with.
+                    textStyle = LocalTextStyle.current.copy(
+                        fontWeight = if (current.bold) FontWeight.Bold else FontWeight.Normal,
+                        fontStyle = if (current.italic) FontStyle.Italic else FontStyle.Normal,
+                        textDecoration = if (current.underline) TextDecoration.Underline else TextDecoration.None,
+                    ),
+                    // The keyboard's action key confirms; long text still wraps on the map.
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { onConfirm(value.text, current) }),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FormatToggle(stringResource(R.string.format_bold), "B", current.bold, TextStyle(fontWeight = FontWeight.Bold)) {
+                        current = current.copy(bold = it)
+                    }
+                    FormatToggle(stringResource(R.string.format_italic), "I", current.italic, TextStyle(fontStyle = FontStyle.Italic)) {
+                        current = current.copy(italic = it)
+                    }
+                    FormatToggle(stringResource(R.string.format_underline), "U", current.underline, TextStyle(textDecoration = TextDecoration.Underline)) {
+                        current = current.copy(underline = it)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onConfirm(value.text, current) }) { Text(stringResource(R.string.action_ok)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
+    )
+}
+
+@Composable
+private fun FormatToggle(label: String, symbol: String, checked: Boolean, style: TextStyle, onChange: (Boolean) -> Unit) {
+    FilterChip(
+        selected = checked,
+        onClick = { onChange(!checked) },
+        label = { Text(symbol, style = style) },
+        modifier = Modifier.semantics(mergeDescendants = true) {
+            contentDescription = label
+            toggleableState = ToggleableState(checked)
+        },
+    )
+}
+
+/** Asks for a new map name; the name is also the file name, so it cannot be empty or contain `/` and the like. */
+@Composable
+fun RenameDialog(initial: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+    var value by remember { mutableStateOf(TextFieldValue(initial, TextRange(0, initial.length))) }
+    val valid = isValidTitle(value.text.trim())
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.rename_title)) },
+        text = {
             OutlinedTextField(
                 value = value,
                 onValueChange = { value = it },
-                modifier = Modifier.fillMaxWidth().focusRequester(focus).testTag("topic_text"),
-                minLines = 1,
-                maxLines = 6,
-                // The keyboard's action key confirms; long text still wraps on the map.
+                modifier = Modifier.fillMaxWidth().focusRequester(focus).testTag("map_name"),
+                singleLine = true,
+                isError = !valid,
+                supportingText = if (valid) null else ({ Text(stringResource(R.string.rename_invalid)) }),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { onConfirm(value.text) }),
+                keyboardActions = KeyboardActions(onDone = { if (valid) onConfirm(value.text.trim()) }),
             )
         },
-        confirmButton = { TextButton(onClick = { onConfirm(value.text) }) { Text(stringResource(R.string.action_ok)) } },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(value.text.trim()) }, enabled = valid) { Text(stringResource(R.string.action_ok)) }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
     )
 }
@@ -153,7 +231,18 @@ fun shapeLabel(shape: CentralShape): Int = when (shape) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun StyleDialog(shape: CentralShape, color: Int, onShape: (CentralShape) -> Unit, onColor: (Int) -> Unit, onDismiss: () -> Unit) {
+fun StyleDialog(
+    shape: CentralShape,
+    color: Int,
+    trunkWidth: Float,
+    trunkTaper: Float,
+    onShape: (CentralShape) -> Unit,
+    onColor: (Int) -> Unit,
+    onTrunk: (width: Float, taper: Float) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var width by remember { mutableFloatStateOf(trunkWidth) }
+    var taper by remember { mutableFloatStateOf(trunkTaper) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.style_title)) },
@@ -179,6 +268,22 @@ fun StyleDialog(shape: CentralShape, color: Int, onShape: (CentralShape) -> Unit
                         )
                     }
                 }
+                Text(stringResource(R.string.style_trunk_width), style = MaterialTheme.typography.titleSmall)
+                Slider(
+                    value = width,
+                    onValueChange = { width = it },
+                    onValueChangeFinished = { onTrunk(width, taper) },
+                    valueRange = MindMap.MIN_TRUNK_WIDTH..MindMap.MAX_TRUNK_WIDTH,
+                    modifier = Modifier.testTag("trunk_width"),
+                )
+                Text(stringResource(R.string.style_trunk_taper), style = MaterialTheme.typography.titleSmall)
+                Slider(
+                    value = taper,
+                    onValueChange = { taper = it },
+                    onValueChangeFinished = { onTrunk(width, taper) },
+                    valueRange = MindMap.MIN_TRUNK_TAPER..MindMap.MAX_TRUNK_TAPER,
+                    modifier = Modifier.testTag("trunk_taper"),
+                )
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_ok)) } },
@@ -193,16 +298,13 @@ fun UnsavedDialog(onSave: () -> Unit, onDiscard: () -> Unit, onDismiss: () -> Un
         text = { Text(stringResource(R.string.unsaved_text)) },
         confirmButton = { TextButton(onClick = onSave) { Text(stringResource(R.string.action_save)) } },
         dismissButton = {
-            Row2 {
+            Row {
                 TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
                 TextButton(onClick = onDiscard) { Text(stringResource(R.string.action_discard)) }
             }
         },
     )
 }
-
-@Composable
-private fun Row2(content: @Composable () -> Unit) = androidx.compose.foundation.layout.Row { content() }
 
 @Composable
 fun ExportDialog(format: ExportFormat, onSave: () -> Unit, onShare: () -> Unit, onDismiss: () -> Unit) {
