@@ -27,13 +27,14 @@ and SHALL refuse files with a higher version than it supports, with a message as
 - **THEN** the app does not open it and shows a message that a newer version of the app is needed
 
 ### Requirement: Stored map content
-`map.json` SHALL store the layout kind, the central topic's shape and colour, and for every topic its
-text, icon, image (reference, display width and aspect ratio), the side of a main branch when the user
-chose one, and its child topics in order.
+`map.json` SHALL store the layout kind, the central topic's shape and colour, the trunk width and taper,
+and for every topic its text, its bold, italic and underline formatting when set, icon, image (reference,
+display width and aspect ratio), the side of a main branch when the user chose one, and its child topics
+in order.
 
 #### Scenario: Round trip
 - **WHEN** a map is saved and opened again
-- **THEN** the layout, central shape and colour, and every topic's text, icon, image, image size, side and child order are identical to before saving
+- **THEN** the layout, central shape and colour, trunk width and taper, and every topic's text, formatting, icon, image, image size, side and child order are identical to before saving
 
 ### Requirement: Invalid files are rejected safely
 The app SHALL reject a file that is not a valid `.mindmap` container (not a ZIP, no `map.json`, invalid
@@ -46,3 +47,16 @@ JSON, or a missing referenced image) with a clear message and SHALL NOT modify t
 #### Scenario: Open a damaged file
 - **WHEN** the user opens a file whose `map.json` cannot be parsed
 - **THEN** the app shows that the file is damaged and stays on the start screen
+
+### Requirement: Compatible map content additions
+The trunk settings and topic formatting SHALL be optional in `map.json`, so files without them open with
+the defaults, and adding them SHALL NOT raise `formatVersion`. Out-of-range trunk values SHALL be
+clamped to the allowed range when a file is read.
+
+#### Scenario: Open a file from an earlier version
+- **WHEN** the user opens a file saved before trunk settings and formatting existed
+- **THEN** the map opens with trunk width 12, taper 1 and default formatting
+
+#### Scenario: Out-of-range trunk width
+- **WHEN** a file stores a trunk width of 100
+- **THEN** the map opens with trunk width 40
