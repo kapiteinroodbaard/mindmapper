@@ -30,12 +30,17 @@ use its colour. Reordering branches SHALL reassign colours.
 - **THEN** each takes the colour belonging to its new position
 
 ### Requirement: Tapered branches
-Branches SHALL be drawn as smooth curves that are thickest where they leave the central topic and get
-thinner at every level, so a branch is never thicker than the branch it grows from.
+Branches SHALL be thickest where they leave the central topic and get thinner at every level, so a branch
+is never thicker than the branch it grows from. In the standard branch style they SHALL be drawn as smooth
+curves; other branch styles SHALL keep this tapering in their own line shape.
 
 #### Scenario: Three levels
 - **WHEN** a map has main topics with subtopics and sub-subtopics
 - **THEN** the lines to sub-subtopics are thinner than those to subtopics, which are thinner than the main branches
+
+#### Scenario: Tapering in another style
+- **WHEN** a main branch with subtopics uses the lightning style
+- **THEN** its zigzag lines to subtopics are thinner than its main zigzag line
 
 ### Requirement: Light and dark appearance
 The map SHALL use a light appearance (light background, dark text) when the app is in light mode and a
