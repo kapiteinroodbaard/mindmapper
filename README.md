@@ -71,7 +71,7 @@ The version is defined once as `app.version` in `gradle.properties` and follows 
 ```properties
 sdk.dir=/path/to/Android/Sdk
 
-# Optional: also copy every built APK to this folder (overwrites the same version).
+# Optional: also copy release APKs to this folder (overwrites the same version).
 apk.outputDir=/path/to/Apks
 
 # Optional: sign release builds. Without this, release APKs are unsigned (as F-Droid expects).

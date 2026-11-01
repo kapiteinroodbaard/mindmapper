@@ -120,7 +120,8 @@ dependencies {
 
 /**
  * Copies the variant's APK as `mindmapper-v<version>[-debug].apk` into `build/outputs/mindmapper/`
- * and, when `apk.outputDir` is set in local.properties, into that folder too (overwriting).
+ * and, for release builds when `apk.outputDir` is set in local.properties, into that folder too
+ * (overwriting).
  */
 abstract class CopyNamedApkTask : DefaultTask() {
     @get:InputFiles
@@ -164,7 +165,8 @@ androidComponents {
             builtArtifactsLoader.set(variant.artifacts.getBuiltArtifactsLoader())
             apkName.set("mindmapper-v$appVersion$suffix.apk")
             localOutputDir.set(layout.buildDirectory.dir("outputs/mindmapper"))
-            if (apkOutputDir != null) externalOutputDir.set(apkOutputDir)
+            // Only release APKs go to the shared folder; debug builds stay in the build directory.
+            if (apkOutputDir != null && variant.buildType == "release") externalOutputDir.set(apkOutputDir)
         }
         val variantName = variant.name.replaceFirstChar { it.uppercase() }
         tasks.matching { it.name == "assemble$variantName" }.configureEach { finalizedBy(copyTask) }
