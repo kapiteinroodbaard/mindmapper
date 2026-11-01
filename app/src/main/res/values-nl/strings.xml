@@ -45,6 +45,7 @@
     <string name="action_layout_radial">Indeling: rondom het midden</string>
     <string name="action_layout_right">Indeling: naar rechts</string>
     <string name="action_style">Stijl centraal onderwerp</string>
+    <string name="action_branch_style">Takstijl</string>
     <string name="action_export_pdf">Exporteren als PDF</string>
     <string name="action_export_png">Exporteren als PNG</string>
     <string name="action_add_child">Subonderwerp toevoegen</string>

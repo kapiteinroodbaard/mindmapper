@@ -1,8 +1,11 @@
 package io.github.wlenaerts.mindmapper.core
 
+import io.github.wlenaerts.mindmapper.core.edit.move
+import io.github.wlenaerts.mindmapper.core.edit.setBranchStyle
 import io.github.wlenaerts.mindmapper.core.edit.setLayout
 import io.github.wlenaerts.mindmapper.core.layout.MapLayouter
 import io.github.wlenaerts.mindmapper.core.layout.Size
+import io.github.wlenaerts.mindmapper.core.model.BranchStyle
 import io.github.wlenaerts.mindmapper.core.model.LayoutKind
 import io.github.wlenaerts.mindmapper.core.model.Side
 import io.github.wlenaerts.mindmapper.core.model.Topic
@@ -15,6 +18,17 @@ import kotlin.math.abs
 import kotlin.random.Random
 
 class MapLayouterTest {
+
+    @Test
+    fun subtreeCarriesItsMainBranchStyle() {
+        val m = map(topic("a", topic("a1", topic("a2"))), topic("b", topic("b1"))).setBranchStyle("a", BranchStyle.LIGHTNING)
+        val layout = MapLayouter.layout(m, fixedMeasure)
+        assertEquals(BranchStyle.STANDARD, layout["root"]!!.style)
+        assertEquals(listOf(BranchStyle.LIGHTNING), listOf("a", "a1", "a2").map { layout[it]!!.style }.distinct())
+        assertEquals(BranchStyle.STANDARD, layout["b1"]!!.style)
+        val moved = MapLayouter.layout(m.move("b1", "a1", 1), fixedMeasure)
+        assertEquals(BranchStyle.LIGHTNING, moved["b1"]!!.style)
+    }
 
     @Test
     fun fourEqualBranchesAreSplitClockwise() {

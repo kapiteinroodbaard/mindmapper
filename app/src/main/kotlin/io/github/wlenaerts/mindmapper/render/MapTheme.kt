@@ -2,13 +2,17 @@ package io.github.wlenaerts.mindmapper.render
 
 import io.github.wlenaerts.mindmapper.core.layout.MapLayouter
 
-/** Colours used to draw a map. [palette] has one colour per branch colour slot. */
+/**
+ * Colours used to draw a map. [palette] has one colour per branch colour slot; [glowAlphas] are the
+ * opacities of the blurred style's soft rings, faintest (outermost) first.
+ */
 data class MapTheme(
     val background: Int,
     val text: Int,
     val palette: List<Int>,
     val selection: Int,
     val dropIndicator: Int,
+    val glowAlphas: List<Float>,
 ) {
     fun branchColor(slot: Int): Int = palette[slot.mod(palette.size)]
 
@@ -23,6 +27,7 @@ data class MapTheme(
             ).map { it.toInt() },
             selection = 0xFF1E88E5.toInt(),
             dropIndicator = 0xFF1E88E5.toInt(),
+            glowAlphas = listOf(0.06f, 0.09f, 0.13f, 0.18f, 0.26f),
         )
 
         val Dark = MapTheme(
@@ -34,6 +39,7 @@ data class MapTheme(
             ).map { it.toInt() },
             selection = 0xFF90CAF9.toInt(),
             dropIndicator = 0xFF90CAF9.toInt(),
+            glowAlphas = listOf(0.09f, 0.13f, 0.18f, 0.24f, 0.32f),
         )
 
         init {

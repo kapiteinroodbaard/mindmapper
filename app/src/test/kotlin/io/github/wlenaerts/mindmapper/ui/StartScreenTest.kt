@@ -7,6 +7,8 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTextReplacement
@@ -80,6 +82,28 @@ class StartScreenTest {
         compose.onNodeWithContentDescription("Central topic style").performClick()
         compose.onNodeWithText("Trunk width").assertIsDisplayed()
         compose.onNodeWithText("Trunk taper").assertExists()
+    }
+
+    @Test
+    fun mainTopicHasBranchStylePickerAndSubtopicHasNone() {
+        compose.setContent { MindmapperTheme { MindmapperApp() } }
+        compose.onNodeWithText("New mind map").performClick()
+        compose.onAllNodesWithContentDescription("Add subtopic")[0].performClick()
+        compose.onNodeWithText("OK").performClick()
+        // The new main topic is selected: style and delete.
+        compose.onNodeWithContentDescription("Branch style").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Delete").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Branch style").performClick()
+        compose.onNodeWithTag("branch_style_standard").assertIsSelected()
+        compose.onNodeWithTag("branch_style_lightning").assertIsNotSelected().performClick()
+        compose.onNodeWithTag("branch_style_lightning").assertIsSelected()
+        compose.onNodeWithTag("branch_style_standard").assertIsNotSelected()
+        compose.onNodeWithText("OK").performClick()
+        // A subtopic inherits the style and has no style action.
+        compose.onNodeWithContentDescription("Add subtopic").performClick()
+        compose.onNodeWithText("OK").performClick()
+        compose.onNodeWithContentDescription("Delete").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Branch style").assertDoesNotExist()
     }
 
     @Test

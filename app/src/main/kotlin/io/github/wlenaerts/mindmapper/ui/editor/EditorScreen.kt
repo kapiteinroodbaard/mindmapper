@@ -58,6 +58,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import io.github.wlenaerts.mindmapper.R
 import io.github.wlenaerts.mindmapper.core.model.LayoutKind
+import io.github.wlenaerts.mindmapper.core.model.styleOrStandard
 import io.github.wlenaerts.mindmapper.core.view.Viewport
 import io.github.wlenaerts.mindmapper.export.ExportFormat
 import io.github.wlenaerts.mindmapper.ui.map.MapCanvas
@@ -69,6 +70,7 @@ private sealed interface EditorDialog {
     data class ChooseIcon(val topicId: String) : EditorDialog
     data class EditImage(val topicId: String) : EditorDialog
     data object Style : EditorDialog
+    data class BranchStyle(val topicId: String) : EditorDialog
     data object Rename : EditorDialog
     data object Unsaved : EditorDialog
     data class Export(val format: ExportFormat) : EditorDialog
@@ -277,7 +279,7 @@ fun EditorScreen(viewModel: EditorViewModel, onClose: () -> Unit, onPresent: () 
                             if (map.find(selected)?.image != null) dialog = EditorDialog.EditImage(selected) else chooseImage(selected)
                         },
                         onIcon = { dialog = EditorDialog.ChooseIcon(selected) },
-                        onStyle = { dialog = EditorDialog.Style },
+                        onStyle = { dialog = if (selectedBox.depth == 0) EditorDialog.Style else EditorDialog.BranchStyle(selected) },
                         onDelete = viewModel::deleteSelected,
                     )
                     // Every topic action is on the map now; the toolbar is kept for actions that belong there.
@@ -324,6 +326,15 @@ fun EditorScreen(viewModel: EditorViewModel, onClose: () -> Unit, onPresent: () 
                 onShape = viewModel::setCentralShape,
                 onColor = viewModel::setCentralColor,
                 onTrunk = viewModel::setTrunk,
+                onDismiss = { dialog = null },
+            )
+        }
+        is EditorDialog.BranchStyle -> map?.find(d.topicId)?.let { topic ->
+            BranchStyleDialog(
+                current = topic.styleOrStandard,
+                colorSlot = state.layout?.get(d.topicId)?.colorSlot ?: 0,
+                renderer = viewModel.renderer,
+                onPick = { viewModel.setBranchStyle(d.topicId, it) },
                 onDismiss = { dialog = null },
             )
         }

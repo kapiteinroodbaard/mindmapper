@@ -29,6 +29,28 @@ enum class CentralShape {
     @SerialName("capsule") CAPSULE,
 }
 
+/** How a main branch and everything under it is drawn. A topic without a style is drawn as [STANDARD]. */
+@Serializable(with = BranchStyleSerializer::class)
+enum class BranchStyle(val serialName: String) {
+    STANDARD("standard"),
+    BLURRED("blurred"),
+    PLANT("plant"),
+    LIGHTNING("lightning"),
+    STRAIGHT("straight"),
+}
+
+/** Reads unknown style names (from a newer app version) as [BranchStyle.STANDARD] instead of failing. */
+object BranchStyleSerializer : KSerializer<BranchStyle> {
+    override val descriptor = PrimitiveSerialDescriptor("BranchStyle", PrimitiveKind.STRING)
+
+    override fun serialize(encoder: Encoder, value: BranchStyle) = encoder.encodeString(value.serialName)
+
+    override fun deserialize(decoder: Decoder): BranchStyle {
+        val name = decoder.decodeString()
+        return BranchStyle.entries.firstOrNull { it.serialName == name } ?: BranchStyle.STANDARD
+    }
+}
+
 @Serializable
 enum class Side {
     @SerialName("left") LEFT,
@@ -51,7 +73,8 @@ data class TopicImage(val path: String, val width: Float, val aspect: Float) {
 }
 
 /**
- * A topic in the tree. [side] is only meaningful for main branches (children of the central topic).
+ * A topic in the tree. [side] and [style] are only meaningful for main branches (children of the central
+ * topic); [style] null means [BranchStyle.STANDARD].
  * [bold] null means the default for the topic's level (bold for the central topic and main branches);
  * [italic] and [underline] are null when off, so they are left out of the file.
  */
@@ -65,6 +88,7 @@ data class Topic(
     val icon: String? = null,
     val image: TopicImage? = null,
     val side: Side? = null,
+    val style: BranchStyle? = null,
     val children: List<Topic> = emptyList(),
 )
 
@@ -124,6 +148,9 @@ data class MindMap(
         const val MAX_TRUNK_TAPER = 5f
     }
 }
+
+/** The style a main branch is drawn in. */
+val Topic.styleOrStandard: BranchStyle get() = style ?: BranchStyle.STANDARD
 
 fun subtreeIds(topic: Topic): Set<String> = buildSet {
     fun visit(t: Topic) {

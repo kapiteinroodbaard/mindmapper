@@ -1,5 +1,6 @@
 package io.github.wlenaerts.mindmapper.core.format
 
+import io.github.wlenaerts.mindmapper.core.model.BranchStyle
 import io.github.wlenaerts.mindmapper.core.model.CentralShape
 import io.github.wlenaerts.mindmapper.core.model.HexColorSerializer
 import io.github.wlenaerts.mindmapper.core.model.LayoutKind
@@ -99,7 +100,18 @@ object MindMapArchive {
             file.centralColor,
             file.trunkWidth.coerceIn(MindMap.MIN_TRUNK_WIDTH, MindMap.MAX_TRUNK_WIDTH),
             file.trunkTaper.coerceIn(MindMap.MIN_TRUNK_TAPER, MindMap.MAX_TRUNK_TAPER),
-            file.root,
+            normalizeStyles(file.root),
+        )
+    }
+
+    /** Keeps branch styles only on main branches, and stores standard as no style. */
+    private fun normalizeStyles(root: Topic): Topic {
+        fun clear(topic: Topic): Topic = topic.copy(style = null, children = topic.children.map(::clear))
+        return root.copy(
+            style = null,
+            children = root.children.map { main ->
+                clear(main).copy(style = main.style?.takeIf { it != BranchStyle.STANDARD })
+            },
         )
     }
 

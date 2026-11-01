@@ -49,6 +49,7 @@
     <string name="action_layout_radial">Layout: around the centre</string>
     <string name="action_layout_right">Layout: to the right</string>
     <string name="action_style">Central topic style</string>
+    <string name="action_branch_style">Branch style</string>
     <string name="action_export_pdf">Export as PDF</string>
     <string name="action_export_png">Export as PNG</string>
     <string name="action_add_child">Add subtopic</string>

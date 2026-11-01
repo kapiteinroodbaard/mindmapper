@@ -1,5 +1,6 @@
 package io.github.wlenaerts.mindmapper.core.edit
 
+import io.github.wlenaerts.mindmapper.core.model.BranchStyle
 import io.github.wlenaerts.mindmapper.core.model.CentralShape
 import io.github.wlenaerts.mindmapper.core.model.LayoutKind
 import io.github.wlenaerts.mindmapper.core.model.MindMap
@@ -48,6 +49,12 @@ fun MindMap.setCentralShape(shape: CentralShape): MindMap = copy(centralShape = 
 
 fun MindMap.setCentralColor(color: Int): MindMap = copy(centralColor = color)
 
+/** Sets the style of main branch [id]; standard is stored as null. Other topics have no style of their own. */
+fun MindMap.setBranchStyle(id: String, style: BranchStyle): MindMap {
+    if (root.children.none { it.id == id }) return this
+    return updateTopic(id) { it.copy(style = style.takeIf { s -> s != BranchStyle.STANDARD }) }
+}
+
 /** Appends [child] as the last child of [parentId]. Under the central topic, [side] places the new main branch. */
 fun MindMap.addChild(parentId: String, child: Topic, side: Side? = null): MindMap {
     val placed = if (parentId == root.id) child.copy(side = side) else child
@@ -80,7 +87,7 @@ private fun MindMap.insert(parentId: String, index: Int, topic: Topic): MindMap 
 /**
  * Moves topic [id] with its subtree to position [index] among the children of [parentId] (index as seen
  * before the move). Under the central topic the branch gets [side] (null keeps its current side); elsewhere
- * the side is cleared. Moving the central topic, or into the topic's own subtree, is rejected.
+ * the side and branch style are cleared. Moving the central topic, or into the topic's own subtree, is rejected.
  */
 fun MindMap.move(id: String, parentId: String, index: Int, side: Side? = null): MindMap {
     if (id == root.id || isInSubtree(id, parentId)) return this
@@ -89,7 +96,7 @@ fun MindMap.move(id: String, parentId: String, index: Int, side: Side? = null): 
     if (find(parentId) == null) return this
     val oldIndex = oldParent.children.indexOfFirst { it.id == id }
     val target = if (oldParent.id == parentId && oldIndex < index) index - 1 else index
-    val moved = if (parentId == root.id) topic.copy(side = side ?: topic.side) else topic.copy(side = null)
+    val moved = if (parentId == root.id) topic.copy(side = side ?: topic.side) else topic.copy(side = null, style = null)
     val removed = copy(root = removeFrom(root, id))
     return removed.insert(parentId, target, moved)
 }

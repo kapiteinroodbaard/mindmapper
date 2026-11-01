@@ -3,6 +3,7 @@ package io.github.wlenaerts.mindmapper.core
 import io.github.wlenaerts.mindmapper.core.format.MindMapArchive
 import io.github.wlenaerts.mindmapper.core.format.MindMapDocument
 import io.github.wlenaerts.mindmapper.core.format.MindMapFormatException
+import io.github.wlenaerts.mindmapper.core.model.BranchStyle
 import io.github.wlenaerts.mindmapper.core.model.CentralShape
 import io.github.wlenaerts.mindmapper.core.model.LayoutKind
 import io.github.wlenaerts.mindmapper.core.model.MindMap
@@ -34,7 +35,7 @@ class MindMapArchiveTest {
         root = Topic(
             id = "root", text = "Centre",
             children = listOf(
-                Topic(id = "a", text = "A", icon = "star", image = imageA, side = Side.LEFT, children = listOf(Topic(id = "a1", text = "A1"))),
+                Topic(id = "a", text = "A", icon = "star", image = imageA, side = Side.LEFT, style = BranchStyle.PLANT, children = listOf(Topic(id = "a1", text = "A1"))),
                 Topic(id = "b", text = "B\nsecond line", bold = false, italic = true, underline = true, image = imageB),
             ),
         ),
@@ -145,5 +146,36 @@ class MindMapArchiveTest {
         assertFalse(json.contains("italic"))
         assertFalse(json.contains("underline"))
         assertTrue(json.contains("\"formatVersion\": 1"))
+    }
+
+    @Test
+    fun branchStyleIsStoredByName() {
+        val json = MindMapArchive.encodeMap(sample)
+        assertTrue(json.contains("\"style\": \"plant\""))
+        assertTrue(MindMapArchive.encodeMap(newMindMap("x")).let { !it.contains("style") && it.contains("\"formatVersion\": 1") })
+    }
+
+    @Test
+    fun fileWithoutStylesIsStandard() {
+        val m = MindMapArchive.decodeMap("""{"formatVersion": 1, "root": {"id": "r", "text": "x", "children": [{"id": "a", "text": "a"}]}}""")
+        assertEquals(null, m.root.children.single().style)
+    }
+
+    @Test
+    fun unknownStyleReadsAsStandard() {
+        val m = MindMapArchive.decodeMap(
+            """{"formatVersion": 1, "root": {"id": "r", "text": "x", "children": [{"id": "a", "text": "a", "style": "glitter"}, {"id": "b", "text": "b", "style": "lightning"}]}}""",
+        )
+        assertEquals(listOf(null, BranchStyle.LIGHTNING), m.root.children.map { it.style })
+    }
+
+    @Test
+    fun stylesBelowMainBranchesAreDropped() {
+        val m = MindMapArchive.decodeMap(
+            """{"formatVersion": 1, "root": {"id": "r", "text": "x", "style": "plant", "children": [{"id": "a", "text": "a", "style": "standard", "children": [{"id": "a1", "text": "a1", "style": "blurred"}]}]}}""",
+        )
+        assertEquals(null, m.root.style)
+        assertEquals(null, m.root.children.single().style)
+        assertEquals(null, m.root.children.single().children.single().style)
     }
 }

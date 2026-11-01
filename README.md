@@ -8,6 +8,8 @@ on a tablet. No ads, no tracking, no account and no internet access.
 - Central topic in seven shapes with a colour selector
 - Tapered branches (thick at the centre, thinner per level) with automatic colours per main branch;
   adjustable trunk width and taper
+- A style per main branch: standard, blurred, plant (leaves and tendrils), lightning or straight; the
+  style shapes the branch, the main topic's box and all of its subtopics
 - Topic actions right on the map: "+" handles to add subtopics and topics, and an action bar on the
   selected topic
 - Bold, italic and underlined topic text

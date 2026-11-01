@@ -9,6 +9,7 @@ import io.github.wlenaerts.mindmapper.core.edit.resolveDrop
 import io.github.wlenaerts.mindmapper.core.format.MindMapArchive
 import io.github.wlenaerts.mindmapper.R
 import io.github.wlenaerts.mindmapper.core.format.MindMapDocument
+import io.github.wlenaerts.mindmapper.core.model.BranchStyle
 import io.github.wlenaerts.mindmapper.core.model.CentralShape
 import io.github.wlenaerts.mindmapper.core.model.Side
 import io.github.wlenaerts.mindmapper.core.model.newMindMap
@@ -38,6 +39,21 @@ class EditorViewModelTest {
         assertEquals(state.map!!.root.id, state.selectedId)
         assertTrue(state.dirty)
         assertFalse(state.canSaveInPlace)
+    }
+
+    @Test
+    fun branchStyleIsUndoable() {
+        val vm = newEditor()
+        vm.addChild()
+        val main = vm.state.value.selectedId!!
+        vm.setBranchStyle(main, BranchStyle.PLANT)
+        assertEquals(BranchStyle.PLANT, vm.state.value.map!!.find(main)!!.style)
+        assertEquals(BranchStyle.PLANT, vm.state.value.layout!![main]!!.style)
+        vm.setBranchStyle(main, BranchStyle.LIGHTNING)
+        vm.undo()
+        assertEquals(BranchStyle.PLANT, vm.state.value.map!!.find(main)!!.style)
+        vm.undo()
+        assertNull(vm.state.value.map!!.find(main)!!.style)
     }
 
     @Test

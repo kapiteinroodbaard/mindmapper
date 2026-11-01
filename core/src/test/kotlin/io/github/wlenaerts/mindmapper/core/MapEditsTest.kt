@@ -7,6 +7,7 @@ import io.github.wlenaerts.mindmapper.core.edit.addSiblingAfter
 import io.github.wlenaerts.mindmapper.core.edit.delete
 import io.github.wlenaerts.mindmapper.core.edit.move
 import io.github.wlenaerts.mindmapper.core.edit.resolveDrop
+import io.github.wlenaerts.mindmapper.core.edit.setBranchStyle
 import io.github.wlenaerts.mindmapper.core.edit.setCentralShape
 import io.github.wlenaerts.mindmapper.core.edit.setIcon
 import io.github.wlenaerts.mindmapper.core.edit.setImage
@@ -17,6 +18,7 @@ import io.github.wlenaerts.mindmapper.core.edit.setTextFormat
 import io.github.wlenaerts.mindmapper.core.edit.setTrunk
 import io.github.wlenaerts.mindmapper.core.model.MindMap
 import io.github.wlenaerts.mindmapper.core.layout.MapLayouter
+import io.github.wlenaerts.mindmapper.core.model.BranchStyle
 import io.github.wlenaerts.mindmapper.core.model.CentralShape
 import io.github.wlenaerts.mindmapper.core.model.LayoutKind
 import io.github.wlenaerts.mindmapper.core.model.Side
@@ -131,6 +133,24 @@ class MapEditsTest {
         assertEquals(Side.LEFT, m.move("a", "root", 3, Side.LEFT).find("a")!!.side)
         // A main branch moved below another topic loses its side.
         assertNull(m.move("b", "a", 0).find("b")!!.side)
+    }
+
+    @Test
+    fun branchStyleOnlyOnMainBranches() {
+        val m = map(branch("a", 1), topic("b"))
+        assertEquals(BranchStyle.LIGHTNING, m.setBranchStyle("a", BranchStyle.LIGHTNING).find("a")!!.style)
+        assertNull(m.setBranchStyle("a", BranchStyle.PLANT).setBranchStyle("a", BranchStyle.STANDARD).find("a")!!.style)
+        assertEquals(m, m.setBranchStyle("a.0", BranchStyle.PLANT))
+        assertEquals(m, m.setBranchStyle("root", BranchStyle.PLANT))
+    }
+
+    @Test
+    fun moveKeepsStyleAmongMainBranchesAndDropsItBelow() {
+        val m = map(branch("a", 1), topic("b")).setBranchStyle("b", BranchStyle.PLANT)
+        assertEquals(BranchStyle.PLANT, m.move("b", "root", 0, Side.LEFT).find("b")!!.style)
+        val below = m.move("b", "a", 0)
+        assertNull(below.find("b")!!.style)
+        assertNull(below.move("b", "root", 2).find("b")!!.style)
     }
 
     @Test

@@ -1,6 +1,16 @@
 package io.github.wlenaerts.mindmapper.ui.editor
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.core.graphics.withScale
+import androidx.compose.ui.semantics.selected
+import io.github.wlenaerts.mindmapper.core.model.BranchStyle
+import io.github.wlenaerts.mindmapper.render.MapRenderer
+import io.github.wlenaerts.mindmapper.render.MapTheme
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -228,6 +238,51 @@ fun shapeLabel(shape: CentralShape): Int = when (shape) {
     CentralShape.HEXAGON -> R.string.shape_hexagon
     CentralShape.CAPSULE -> R.string.shape_capsule
 }
+
+/**
+ * Picks the style of a main branch. Each tile is a preview drawn by [renderer] in the branch's colour, so the
+ * tiles need no names; picking one applies it at once and marks it as current.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun BranchStyleDialog(current: BranchStyle, colorSlot: Int, renderer: MapRenderer, onPick: (BranchStyle) -> Unit, onDismiss: () -> Unit) {
+    val theme = if (isSystemInDarkTheme()) MapTheme.Dark else MapTheme.Light
+    val color = theme.branchColor(colorSlot)
+    val tile = RoundedCornerShape(12.dp)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.action_branch_style)) },
+        text = {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                BranchStyle.entries.forEach { style ->
+                    val selected = style == current
+                    Canvas(
+                        Modifier
+                            .size(StyleTileWidth, StyleTileWidth * STYLE_SAMPLE_HEIGHT / STYLE_SAMPLE_WIDTH)
+                            .clip(tile)
+                            .background(Color(theme.background))
+                            .border(if (selected) 3.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, tile)
+                            .clickable { onPick(style) }
+                            .semantics { this.selected = selected }
+                            .testTag("branch_style_${style.serialName}"),
+                    ) {
+                        // Drawn in fixed sample units, so the preview looks the same at every screen density.
+                        drawIntoCanvas { canvas ->
+                            canvas.nativeCanvas.withScale(size.width / STYLE_SAMPLE_WIDTH, size.height / STYLE_SAMPLE_HEIGHT) {
+                                renderer.drawStyleSample(this, style, color, theme, STYLE_SAMPLE_WIDTH, STYLE_SAMPLE_HEIGHT)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_ok)) } },
+    )
+}
+
+private val StyleTileWidth = 96.dp
+private const val STYLE_SAMPLE_WIDTH = 120f
+private const val STYLE_SAMPLE_HEIGHT = 70f
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

@@ -14,6 +14,7 @@ import io.github.wlenaerts.mindmapper.core.edit.addChild
 import io.github.wlenaerts.mindmapper.core.edit.addSiblingAfter
 import io.github.wlenaerts.mindmapper.core.edit.delete
 import io.github.wlenaerts.mindmapper.core.edit.setCentralColor
+import io.github.wlenaerts.mindmapper.core.edit.setBranchStyle
 import io.github.wlenaerts.mindmapper.core.edit.setCentralShape
 import io.github.wlenaerts.mindmapper.core.edit.setIcon
 import io.github.wlenaerts.mindmapper.core.edit.setImage
@@ -24,6 +25,7 @@ import io.github.wlenaerts.mindmapper.core.edit.setTextFormat
 import io.github.wlenaerts.mindmapper.core.edit.setTrunk
 import io.github.wlenaerts.mindmapper.core.format.MindMapDocument
 import io.github.wlenaerts.mindmapper.core.layout.MapLayout
+import io.github.wlenaerts.mindmapper.core.model.BranchStyle
 import io.github.wlenaerts.mindmapper.core.model.CentralShape
 import io.github.wlenaerts.mindmapper.core.model.LayoutKind
 import io.github.wlenaerts.mindmapper.core.model.MindMap
@@ -223,6 +225,8 @@ class EditorViewModel(application: Application, savedState: SavedStateHandle) : 
     fun setCentralColor(color: Int) = edit({ it.setCentralColor(color) })
 
     fun setTrunk(width: Float, taper: Float) = edit({ it.setTrunk(width, taper) })
+
+    fun setBranchStyle(id: String, style: BranchStyle) = edit({ it.setBranchStyle(id, style) })
 
     /**
      * Renames the map to [name]. A saved map's file is renamed; a never-saved map keeps the name as the

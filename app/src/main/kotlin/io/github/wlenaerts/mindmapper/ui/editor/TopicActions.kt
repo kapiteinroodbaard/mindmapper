@@ -83,7 +83,7 @@ fun TopicActions(
             }, iconRes = R.drawable.ic_add_sibling, onClick = onAddSibling)
         }
         ActionBar(
-            isRoot = isRoot,
+            depth = box.depth,
             modifier = Modifier.placed(width, height) { w, h ->
                 val above = r.top - gap - h
                 // Below the topic (and below the "topic after" handle) when there is no room above.
@@ -144,7 +144,7 @@ private fun Handle(
 
 @Composable
 private fun ActionBar(
-    isRoot: Boolean,
+    depth: Int,
     modifier: Modifier,
     onEditText: () -> Unit,
     onImage: () -> Unit,
@@ -158,12 +158,16 @@ private fun ActionBar(
             horizontalArrangement = Arrangement.spacedBy(0.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            val isRoot = depth == 0
             IconButton(onClick = onEditText) { Icon(Icons.Filled.Edit, stringResource(R.string.action_edit_text)) }
             IconButton(onClick = onImage) { Icon(painterResource(R.drawable.ic_image), stringResource(R.string.action_image)) }
             IconButton(onClick = onIcon) { Icon(painterResource(R.drawable.mm_icon_star), stringResource(R.string.action_icon)) }
-            if (isRoot) {
-                IconButton(onClick = onStyle) { Icon(painterResource(R.drawable.ic_palette), stringResource(R.string.action_style)) }
-            } else {
+            // The central topic and main branches have a style; delete comes last on every topic but the central one.
+            if (depth <= 1) {
+                val label = stringResource(if (isRoot) R.string.action_style else R.string.action_branch_style)
+                IconButton(onClick = onStyle) { Icon(painterResource(R.drawable.ic_palette), label) }
+            }
+            if (!isRoot) {
                 IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, stringResource(R.string.action_delete)) }
             }
         }

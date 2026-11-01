@@ -1,15 +1,18 @@
 package io.github.wlenaerts.mindmapper.core.layout
 
+import io.github.wlenaerts.mindmapper.core.model.BranchStyle
 import io.github.wlenaerts.mindmapper.core.model.LayoutKind
 import io.github.wlenaerts.mindmapper.core.model.MindMap
 import io.github.wlenaerts.mindmapper.core.model.Side
+import io.github.wlenaerts.mindmapper.core.model.styleOrStandard
 import io.github.wlenaerts.mindmapper.core.model.Topic
 import io.github.wlenaerts.mindmapper.core.model.subtreeIds
 import kotlin.math.abs
 
 /**
  * The placed box of one topic, in layout units. [side] is null for the central topic, [colorSlot] is the
- * palette slot of the main branch the topic belongs to (-1 for the central topic).
+ * palette slot of the main branch the topic belongs to (-1 for the central topic) and [style] that branch's
+ * style (standard for the central topic).
  */
 data class TopicBox(
     val topicId: String,
@@ -18,6 +21,7 @@ data class TopicBox(
     val depth: Int,
     val side: Side?,
     val colorSlot: Int,
+    val style: BranchStyle = BranchStyle.STANDARD,
 )
 
 /** The result of laying out a map: a box per topic (in depth-first order) and the overall bounds. */
@@ -80,10 +84,10 @@ object MapLayouter {
 
             // The left side is filled bottom to top (clockwise), so on screen it reads in reverse order.
             stack(right, 0f) { index, center ->
-                place(mains[index], map.root.id, 1, Side.RIGHT, rootRect.right + horizontalGap(1), center, slotOf.getValue(index))
+                place(mains[index], map.root.id, 1, Side.RIGHT, rootRect.right + horizontalGap(1), center, slotOf.getValue(index), mains[index].styleOrStandard)
             }
             stack(left.reversed(), 0f) { index, center ->
-                place(mains[index], map.root.id, 1, Side.LEFT, rootRect.left - horizontalGap(1), center, slotOf.getValue(index))
+                place(mains[index], map.root.id, 1, Side.LEFT, rootRect.left - horizontalGap(1), center, slotOf.getValue(index), mains[index].styleOrStandard)
             }
 
             // Keep depth-first order (matching the model) so parents are drawn before their children.
@@ -108,14 +112,14 @@ object MapLayouter {
             }
         }
 
-        private fun place(topic: Topic, parentId: String, depth: Int, side: Side, anchorX: Float, centerY: Float, slot: Int) {
+        private fun place(topic: Topic, parentId: String, depth: Int, side: Side, anchorX: Float, centerY: Float, slot: Int, style: BranchStyle) {
             val size = sizes.getValue(topic.id)
             val x = if (side == Side.RIGHT) anchorX else anchorX - size.width
             val rect = Rect(x, centerY - size.height / 2, x + size.width, centerY + size.height / 2)
-            boxes += TopicBox(topic.id, parentId, rect, depth, side, slot)
+            boxes += TopicBox(topic.id, parentId, rect, depth, side, slot, style)
             val childAnchor = if (side == Side.RIGHT) rect.right + horizontalGap(depth + 1) else rect.left - horizontalGap(depth + 1)
             stack(topic.children.indices.toList(), centerY, depth + 1, topic.children) { index, center ->
-                place(topic.children[index], topic.id, depth + 1, side, childAnchor, center, slot)
+                place(topic.children[index], topic.id, depth + 1, side, childAnchor, center, slot, style)
             }
         }
 

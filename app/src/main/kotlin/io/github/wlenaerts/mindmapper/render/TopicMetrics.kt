@@ -8,6 +8,7 @@ import io.github.wlenaerts.mindmapper.core.layout.Size
 import io.github.wlenaerts.mindmapper.core.model.CentralShape
 import io.github.wlenaerts.mindmapper.core.model.MindMap
 import io.github.wlenaerts.mindmapper.core.model.Topic
+import io.github.wlenaerts.mindmapper.core.model.styleOrStandard
 import kotlin.math.ceil
 
 /** Sizes and inner layout of topics in layout units. Shared by measuring and drawing so both agree. */
@@ -118,6 +119,7 @@ class TopicMetrics {
         val s = style(depth)
         val w = c.contentWidth + 2 * s.padH
         val h = c.contentHeight + 2 * s.padV
+        if (depth == 1) return BranchGeometry.mainBoxSize(topic.styleOrStandard, w, h)
         if (depth != 0) return Size(w, h)
         return when (map.centralShape) {
             CentralShape.RECTANGLE, CentralShape.ROUNDED_RECTANGLE -> Size(w, h)

@@ -12,12 +12,12 @@ import io.github.wlenaerts.mindmapper.core.layout.MapLayout
 import io.github.wlenaerts.mindmapper.core.layout.MapLayouter
 import io.github.wlenaerts.mindmapper.core.layout.Rect
 import io.github.wlenaerts.mindmapper.core.layout.TopicBox
+import io.github.wlenaerts.mindmapper.core.model.BranchStyle
 import io.github.wlenaerts.mindmapper.core.model.CentralShape
 import io.github.wlenaerts.mindmapper.core.model.MindMap
 import io.github.wlenaerts.mindmapper.core.model.Side
 import io.github.wlenaerts.mindmapper.core.model.Topic
 import kotlin.math.hypot
-import kotlin.math.pow
 
 /** Supplies decoded images for topic image paths; null while unavailable. */
 fun interface ImageSource {
@@ -52,7 +52,7 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
         for (box in layout.boxes) {
             if (box.depth == 0 || box.topicId in hiddenIds) continue
             val parent = layout[box.parentId ?: continue] ?: continue
-            drawBranch(canvas, map, parent, box, theme.branchColor(box.colorSlot))
+            drawBranch(canvas, map, parent, box, theme)
         }
         for (box in layout.boxes) {
             if (box.topicId in hiddenIds) continue
@@ -69,13 +69,26 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
         val topic = map.find(topicId) ?: return
         canvas.save()
         canvas.translate(dx, dy)
-        if (box.depth >= 2) {
-            stroke.color = theme.branchColor(box.colorSlot)
-            stroke.strokeWidth = branchWidths(map, box.depth).second
-            canvas.drawLine(box.rect.left, box.rect.bottom, box.rect.right, box.rect.bottom, stroke)
-        }
+        if (box.depth >= 2) drawUnderline(canvas, box, theme.branchColor(box.colorSlot), branchWidths(map, box.depth).second, theme)
         drawTopic(canvas, map, topic, box, theme, images)
         canvas.restore()
+    }
+
+    /**
+     * Draws a preview of [style] filling [width] by [height]: a main branch growing into its box, in [color].
+     * Used for the tiles of the branch style picker.
+     */
+    fun drawStyleSample(canvas: Canvas, style: BranchStyle, color: Int, theme: MapTheme, width: Float, height: Float) {
+        val boxW = width * 0.4f
+        val boxH = height * 0.34f
+        val box = Rect(width - boxW - width * 0.06f, (height - boxH) / 2, width - width * 0.06f, (height + boxH) / 2)
+        val startY = height * 0.82f
+        val endX = box.left + BranchGeometry.mainBoxInset(style, box)
+        drawLine(
+            canvas, style, x0 = width * 0.04f, y0 = startY, x1 = endX, y1 = box.centerY, w0 = height * 0.11f, w1 = height * 0.05f,
+            color = color, theme = theme, seed = SAMPLE_SEED, start = null, end = box, decorate = true,
+        )
+        drawMainBox(canvas, style, box, color, theme)
     }
 
     /** Start and end width of the branch leading to a topic at [depth]; main branches follow the map's trunk width. */
@@ -85,79 +98,121 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
         else -> 2.5f to 1.5f
     }
 
-    private fun drawBranch(canvas: Canvas, map: MindMap, parent: TopicBox, child: TopicBox, color: Int) {
+    private fun drawBranch(canvas: Canvas, map: MindMap, parent: TopicBox, child: TopicBox, theme: MapTheme) {
         val right = child.side != Side.LEFT
         val (startX, startY) = when {
             parent.depth == 0 -> parent.rect.centerX to parent.rect.centerY
             parent.depth == 1 -> (if (right) parent.rect.right else parent.rect.left) to parent.rect.centerY
             else -> (if (right) parent.rect.right else parent.rect.left) to parent.rect.bottom
         }
-        val endX = if (right) child.rect.left else child.rect.right
+        // A main branch ends where the box outline crosses the box's vertical centre.
+        val inset = if (child.depth == 1) BranchGeometry.mainBoxInset(child.style, child.rect) else 0f
+        val endX = if (right) child.rect.left + inset else child.rect.right - inset
         val endY = if (child.depth == 1) child.rect.centerY else child.rect.bottom
         val (w0, w1) = branchWidths(map, child.depth)
-        fill.color = color
+        val color = theme.branchColor(child.colorSlot)
         // A main branch starts inside the central topic: it keeps its full width up to the topic's edge and
         // only tapers from there, at the map's taper rate.
-        val path = if (child.depth == 1) {
-            ribbon(startX, startY, endX, endY, w0, w1, taper = map.trunkTaper, inside = parent.rect)
-        } else {
-            ribbon(startX, startY, endX, endY, w0, w1)
-        }
-        canvas.drawPath(path, fill)
-        if (child.depth >= 2) {
-            // Subtopics have no box: an underline in the branch colour carries the topic.
-            stroke.color = color
-            stroke.strokeWidth = w1
-            canvas.drawLine(child.rect.left, child.rect.bottom, child.rect.right, child.rect.bottom, stroke)
-        }
+        val main = child.depth == 1
+        drawLine(
+            canvas, child.style, startX, startY, endX, endY, w0, w1, color, theme, child.topicId.hashCode(),
+            start = parent.rect, end = child.rect, decorate = main, taper = if (main) map.trunkTaper else 1f, inside = if (main) parent.rect else null,
+        )
+        // Subtopics have no box: an underline in the branch colour carries the topic.
+        if (child.depth >= 2) drawUnderline(canvas, child, color, w1, theme)
     }
 
     /**
-     * A filled cubic Bézier ribbon whose width tapers from [w0] to [w1]. The part of the curve within [inside]
-     * keeps width [w0]; beyond it the width follows `(1 - t)^taper`, so a higher [taper] thins out sooner.
+     * Draws one tapered branch line in [style]. [start] and [end] are the boxes it connects, kept clear of
+     * decorations; [decorate] adds the plant style's leaves and tendrils.
      */
-    private fun ribbon(
-        x0: Float, y0: Float, x3: Float, y3: Float, w0: Float, w1: Float,
+    private fun drawLine(
+        canvas: Canvas, style: BranchStyle, x0: Float, y0: Float, x1: Float, y1: Float, w0: Float, w1: Float,
+        color: Int, theme: MapTheme, seed: Int, start: Rect?, end: Rect?, decorate: Boolean,
         taper: Float = 1f, inside: Rect? = null,
-    ): Path {
-        val mx = (x0 + x3) / 2
-        val c1x = mx
-        val c1y = y0
-        val c2x = mx
-        val c2y = y3
-        val steps = 40
-        fun point(t: Float): Pair<Float, Float> {
-            val u = 1 - t
-            return (u * u * u * x0 + 3 * u * u * t * c1x + 3 * u * t * t * c2x + t * t * t * x3) to
-                (u * u * u * y0 + 3 * u * u * t * c1y + 3 * u * t * t * c2y + t * t * t * y3)
+    ) {
+        val line = when (style) {
+            BranchStyle.STANDARD, BranchStyle.BLURRED, BranchStyle.PLANT -> BranchGeometry.curve(x0, y0, x1, y1)
+            BranchStyle.STRAIGHT -> BranchGeometry.straight(x0, y0, x1, y1)
+            BranchStyle.LIGHTNING -> {
+                val amplitude = (hypot(x1 - x0, y1 - y0) * 0.06f).coerceIn(3f, 10f) + w0 * 0.25f
+                BranchGeometry.zigzag(x0, y0, x1, y1, seed, amplitude, calm = inside)
+            }
         }
-        // Curve parameter where the ribbon leaves [inside].
-        val exit = inside?.let { r ->
-            (0..steps).map { it / steps.toFloat() }.firstOrNull { t -> point(t).let { (x, y) -> !r.contains(x, y) } }
-        } ?: 0f
-        val upper = FloatArray((steps + 1) * 2)
-        val lower = FloatArray((steps + 1) * 2)
-        for (i in 0..steps) {
-            val t = i / steps.toFloat()
-            val u = 1 - t
-            val (x, y) = point(t)
-            val dx = 3 * u * u * (c1x - x0) + 6 * u * t * (c2x - c1x) + 3 * t * t * (x3 - c2x)
-            val dy = 3 * u * u * (c1y - y0) + 6 * u * t * (c2y - c1y) + 3 * t * t * (y3 - c2y)
-            val len = hypot(dx, dy).takeIf { it > 0.0001f } ?: 1f
-            val progress = if (t <= exit) 0f else (t - exit) / (1 - exit)
-            val remaining = (1 - progress).toDouble().pow(taper.toDouble()).toFloat()
-            val half = (w1 + (w0 - w1) * remaining) / 2
-            val nx = -dy / len * half
-            val ny = dx / len * half
-            upper[i * 2] = x + nx; upper[i * 2 + 1] = y + ny
-            lower[i * 2] = x - nx; lower[i * 2 + 1] = y - ny
+        val halves = BranchGeometry.halfWidths(line, w0, w1, taper, inside)
+        if (style == BranchStyle.BLURRED) {
+            val spread = 1f + w0 / 16f
+            drawGlow(canvas, color, theme) { ring -> canvas.drawPath(BranchGeometry.outline(line, halves, ring * spread), fill) }
         }
-        return Path().apply {
-            moveTo(upper[0], upper[1])
-            for (i in 1..steps) lineTo(upper[i * 2], upper[i * 2 + 1])
-            for (i in steps downTo 0) lineTo(lower[i * 2], lower[i * 2 + 1])
-            close()
+        fill.color = color
+        canvas.drawPath(BranchGeometry.outline(line, halves), fill)
+        if (style == BranchStyle.PLANT && decorate) drawPlant(canvas, line, halves, color, seed, start, end)
+    }
+
+    /** Draws the soft rings of the blurred style, widest and faintest first; [ring] gets the ring's spread. */
+    private inline fun drawGlow(canvas: Canvas, color: Int, theme: MapTheme, ring: (Float) -> Unit) {
+        val count = theme.glowAlphas.size
+        theme.glowAlphas.forEachIndexed { i, alpha ->
+            fill.color = withAlpha(color, alpha)
+            stroke.color = fill.color
+            ring(GLOW_SPREAD * (count - i) / count)
         }
+    }
+
+    private fun drawPlant(canvas: Canvas, line: Centreline, halves: FloatArray, color: Int, seed: Int, start: Rect?, end: Rect?) {
+        fill.color = color
+        stroke.color = color
+        for (part in BranchGeometry.plantParts(line, halves, seed, start, end)) {
+            if (part.leaf) {
+                canvas.drawPath(BranchGeometry.leaf(part.x, part.y, part.angle, part.length), fill)
+            } else {
+                stroke.strokeWidth = part.thickness
+                canvas.drawPath(BranchGeometry.tendril(part.x, part.y, part.angle, part.length, part.turn), stroke)
+            }
+        }
+    }
+
+    /** The line under a subtopic, in its branch's style. */
+    private fun drawUnderline(canvas: Canvas, box: TopicBox, color: Int, width: Float, theme: MapTheme) {
+        val r = box.rect
+        stroke.strokeWidth = width
+        when (box.style) {
+            BranchStyle.STANDARD, BranchStyle.STRAIGHT -> {
+                stroke.color = color
+                canvas.drawLine(r.left, r.bottom, r.right, r.bottom, stroke)
+            }
+            BranchStyle.BLURRED -> {
+                drawGlow(canvas, color, theme) { ring ->
+                    stroke.strokeWidth = width + 2 * ring
+                    canvas.drawLine(r.left, r.bottom, r.right, r.bottom, stroke)
+                }
+                stroke.color = color
+                stroke.strokeWidth = width
+                canvas.drawLine(r.left, r.bottom, r.right, r.bottom, stroke)
+            }
+            BranchStyle.PLANT -> {
+                stroke.color = color
+                canvas.drawLine(r.left, r.bottom, r.right, r.bottom, stroke)
+                // A small leaf at the outer end, pointing away from the branch and slightly up.
+                fill.color = color
+                val right = box.side != Side.LEFT
+                val angle = if (right) -0.55f else (Math.PI.toFloat() + 0.55f)
+                canvas.drawPath(BranchGeometry.leaf(if (right) r.right else r.left, r.bottom, angle, 13f), fill)
+            }
+            BranchStyle.LIGHTNING -> {
+                stroke.color = color
+                canvas.drawPath(BranchGeometry.zigzagUnderline(r.left, r.right, r.bottom, 2.2f + width / 2), stroke)
+            }
+        }
+    }
+
+    /** The box of a main topic in [style], with the blurred style's glow around it. */
+    private fun drawMainBox(canvas: Canvas, style: BranchStyle, r: Rect, color: Int, theme: MapTheme) {
+        if (style == BranchStyle.BLURRED) {
+            drawGlow(canvas, color, theme) { ring -> canvas.drawRoundRect(r.inset(ring * 1.6f).toRectF(), 10f + ring, 10f + ring, fill) }
+        }
+        fill.color = color
+        canvas.drawPath(BranchGeometry.mainBoxPath(style, r), fill)
     }
 
     private fun drawTopic(canvas: Canvas, map: MindMap, topic: Topic, box: TopicBox, theme: MapTheme, images: ImageSource) {
@@ -171,8 +226,7 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
             }
             1 -> {
                 val color = theme.branchColor(box.colorSlot)
-                fill.color = color
-                canvas.drawRoundRect(r.toRectF(), 10f, 10f, fill)
+                drawMainBox(canvas, box.style, r, color, theme)
                 textColor = contrastingTextColor(color)
             }
             else -> textColor = theme.text
@@ -254,3 +308,9 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
 }
 
 fun Rect.toRectF(): RectF = RectF(left, top, right, bottom)
+
+private const val SAMPLE_SEED = 7
+private const val GLOW_SPREAD = 5f
+
+/** [color] with its alpha replaced by [alpha] (0 to 1). */
+private fun withAlpha(color: Int, alpha: Float): Int = (color and 0x00FFFFFF) or ((alpha * 255).toInt().coerceIn(0, 255) shl 24)
