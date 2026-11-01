@@ -1,0 +1,1 @@
+Knoppen voor onderwerpen direct op de kaart; mindmap hernoemen via de titelbalk; stijl van het centrale onderwerp via het centrale onderwerp; instelbare dikte en versmalling van de stam; vette, cursieve en onderstreepte tekst; betere verdeling rond het midden; lange tekst in het centrale onderwerp staat gecentreerd.

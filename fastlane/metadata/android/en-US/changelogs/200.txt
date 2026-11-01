@@ -1,0 +1,1 @@
+Topic actions right on the map; rename a mind map from the title bar; central topic style from the central topic; adjustable trunk width and taper; bold, italic and underlined text; better balance around the centre; long central text is centred.
