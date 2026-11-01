@@ -54,12 +54,14 @@ fun MindMap.addChild(parentId: String, child: Topic, side: Side? = null): MindMa
     return updateTopic(parentId) { it.copy(children = it.children + placed) }
 }
 
-/** Inserts [sibling] directly after topic [id]; not possible for the central topic. */
+/**
+ * Inserts [sibling] directly after topic [id]; not possible for the central topic. A new main branch does
+ * not take over its neighbour's chosen side, so it is placed by the automatic balancing.
+ */
 fun MindMap.addSiblingAfter(id: String, sibling: Topic): MindMap {
     val parent = parentOf(id) ?: return this
     val index = parent.children.indexOfFirst { it.id == id }
-    val placed = if (parent.id == root.id) sibling.copy(side = parent.children[index].side) else sibling
-    return insert(parent.id, index + 1, placed)
+    return insert(parent.id, index + 1, sibling.copy(side = null))
 }
 
 /** Removes topic [id] with its subtree; the central topic cannot be deleted. */

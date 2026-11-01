@@ -50,7 +50,8 @@ topic SHALL offer edit text, image, icon and, except on the central topic, delet
 ### Requirement: Add a main branch on a chosen side
 In the radial layout, the selected central topic SHALL show a "+" handle on both its left and right
 side; the new main branch SHALL be placed on the side whose handle was used. In the right layout only
-the right handle SHALL be shown.
+the right handle SHALL be shown. A main branch added as a topic after another main branch SHALL NOT take
+over that branch's side; it SHALL be placed by the automatic balancing.
 
 #### Scenario: Add on the left
 - **WHEN** the map uses the radial layout and the user taps the left "+" handle of the central topic
@@ -59,6 +60,10 @@ the right handle SHALL be shown.
 #### Scenario: Right layout
 - **WHEN** the map uses the right layout and the central topic is selected
 - **THEN** only the right "+" handle is shown
+
+#### Scenario: Topics after a main branch are balanced
+- **WHEN** the user adds a main branch with the right "+" handle and then adds nine topics after it
+- **THEN** the nine new branches have no chosen side and the branches are divided over both sides
 
 ### Requirement: Topic toolbar holds only remaining actions
 Actions shown on the map SHALL NOT also be shown in the editor's bottom toolbar. The toolbar SHALL be

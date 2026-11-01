@@ -58,9 +58,20 @@ class MapEditsTest {
     }
 
     @Test
-    fun siblingOfMainBranchKeepsItsSide() {
-        val m = map(topic("a").copy(side = Side.LEFT)).addSiblingAfter("a", Topic(id = "b"))
-        assertEquals(Side.LEFT, m.find("b")!!.side)
+    fun siblingOfMainBranchDoesNotTakeOverItsSide() {
+        val m = map(topic("a").copy(side = Side.LEFT)).addSiblingAfter("a", Topic(id = "b", side = Side.LEFT))
+        assertEquals(Side.LEFT, m.find("a")!!.side)
+        assertNull(m.find("b")!!.side)
+    }
+
+    @Test
+    fun topicsAfterAHandleBranchAreBalanced() {
+        var m = map().addChild("root", Topic(id = "a"), Side.RIGHT)
+        var last = "a"
+        repeat(9) { i -> m = m.addSiblingAfter(last, Topic(id = "s$i")); last = "s$i" }
+        val layout = MapLayouter.layout(m, fixedMeasure)
+        val left = m.root.children.count { layout[it.id]!!.side == Side.LEFT }
+        assertEquals(5, left)
     }
 
     @Test

@@ -84,6 +84,9 @@ PDF/PNG and needs its own touch handling.
   existing "Central topic style" string; the left/right handles share "Add subtopic".
 - `TopicToolbar` stays as a composable taking a list of actions and renders nothing for an empty list.
 - `addChild` gets an optional side for main branches, used by the central topic's left/right handles.
+- `addSiblingAfter` no longer copies a main branch's chosen side to the new branch. Otherwise every branch
+  added after one created with a handle would be pinned to that side and balancing could not work; the
+  handle's choice applies only to the branch it creates.
 
 ### Format toggles in the text dialog
 The text dialog gets three toggle buttons (B, I, U) showing the effective formatting, and the text field
