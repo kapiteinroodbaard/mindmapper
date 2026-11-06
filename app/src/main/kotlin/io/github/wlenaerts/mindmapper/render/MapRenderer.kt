@@ -7,6 +7,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.drawable.Drawable
+import io.github.wlenaerts.mindmapper.R
 import io.github.wlenaerts.mindmapper.core.edit.DropTarget
 import io.github.wlenaerts.mindmapper.core.layout.MapLayout
 import io.github.wlenaerts.mindmapper.core.layout.MapLayouter
@@ -30,7 +31,13 @@ fun interface ImageSource {
  */
 class MapRenderer(private val context: Context, val metrics: TopicMetrics = TopicMetrics()) {
 
-    fun layout(map: MindMap): MapLayout = MapLayouter.layout(map) { topic, depth -> metrics.measure(map, topic, depth) }
+    init {
+        metrics.minutesLabel = { minutes -> context.getString(R.string.duration_minutes, minutes) }
+    }
+
+    /** Lays out [map]; [showDurations] makes room for planned durations, which exports leave out. */
+    fun layout(map: MindMap, showDurations: Boolean = true): MapLayout =
+        MapLayouter.layout(map, { topic, depth -> metrics.measure(map, topic, depth, showDurations) }, showDurations)
 
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
@@ -46,6 +53,7 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
         selectedId: String? = null,
         dropTarget: DropTarget? = null,
         hiddenIds: Set<String> = emptySet(),
+        highlightId: String? = null,
     ) {
         val topics = map.topics().associateBy { it.id }
         // Branches first, so topics are drawn on top of them.
@@ -54,10 +62,11 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
             val parent = layout[box.parentId ?: continue] ?: continue
             drawBranch(canvas, map, parent, box, theme)
         }
+        highlightId?.let { id -> layout[id]?.takeIf { it.depth == 1 && id !in hiddenIds }?.let { drawHighlight(canvas, it, theme) } }
         for (box in layout.boxes) {
             if (box.topicId in hiddenIds) continue
             val topic = topics[box.topicId] ?: continue
-            drawTopic(canvas, map, topic, box, theme, images)
+            drawTopic(canvas, map, topic, box, theme, images, layout.showsDurations)
         }
         selectedId?.let { id -> layout[id]?.let { drawSelection(canvas, it.rect, theme.selection) } }
         dropTarget?.let { target -> layout[target.anchorId]?.let { drawDropIndicator(canvas, it, target, theme.dropIndicator) } }
@@ -70,7 +79,7 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
         canvas.save()
         canvas.translate(dx, dy)
         if (box.depth >= 2) drawUnderline(canvas, box, theme.branchColor(box.colorSlot), branchWidths(map, box.depth).second, theme)
-        drawTopic(canvas, map, topic, box, theme, images)
+        drawTopic(canvas, map, topic, box, theme, images, layout.showsDurations)
         canvas.restore()
     }
 
@@ -206,6 +215,17 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
         }
     }
 
+    /** A strong glow in the branch colour around main topic [box], marking the scheduled branch. */
+    private fun drawHighlight(canvas: Canvas, box: TopicBox, theme: MapTheme) {
+        val color = theme.branchColor(box.colorSlot)
+        val count = theme.highlightAlphas.size
+        theme.highlightAlphas.forEachIndexed { i, alpha ->
+            fill.color = withAlpha(color, alpha)
+            val spread = HIGHLIGHT_SPREAD * (count - i) / count
+            canvas.drawRoundRect(box.rect.inset(spread).toRectF(), 12f + spread, 12f + spread, fill)
+        }
+    }
+
     /** The box of a main topic in [style], with the blurred style's glow around it. */
     private fun drawMainBox(canvas: Canvas, style: BranchStyle, r: Rect, color: Int, theme: MapTheme) {
         if (style == BranchStyle.BLURRED) {
@@ -215,7 +235,15 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
         canvas.drawPath(BranchGeometry.mainBoxPath(style, r), fill)
     }
 
-    private fun drawTopic(canvas: Canvas, map: MindMap, topic: Topic, box: TopicBox, theme: MapTheme, images: ImageSource) {
+    private fun drawTopic(
+        canvas: Canvas,
+        map: MindMap,
+        topic: Topic,
+        box: TopicBox,
+        theme: MapTheme,
+        images: ImageSource,
+        showDurations: Boolean,
+    ) {
         val r = box.rect
         val textColor: Int
         when (box.depth) {
@@ -231,7 +259,8 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
             }
             else -> textColor = theme.text
         }
-        val c = metrics.content(topic, box.depth)
+        val duration = if (showDurations) metrics.shownDurationSeconds(map, topic, box.depth) else null
+        val c = metrics.content(topic, box.depth, duration)
         val originX = r.centerX - c.contentWidth / 2
         val originY = r.centerY - c.contentHeight / 2
         topic.image?.let { image ->
@@ -256,6 +285,13 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
         canvas.translate(originX + c.textX, originY + c.textY)
         c.text.draw(canvas)
         canvas.restore()
+        c.duration?.let { line ->
+            line.paint.color = textColor
+            canvas.save()
+            canvas.translate(originX + c.durationX, originY + c.durationY)
+            line.draw(canvas)
+            canvas.restore()
+        }
     }
 
     private fun icon(name: String?): Drawable? {
@@ -311,6 +347,7 @@ fun Rect.toRectF(): RectF = RectF(left, top, right, bottom)
 
 private const val SAMPLE_SEED = 7
 private const val GLOW_SPREAD = 5f
+private const val HIGHLIGHT_SPREAD = 16f
 
 /** [color] with its alpha replaced by [alpha] (0 to 1). */
 private fun withAlpha(color: Int, alpha: Float): Int = (color and 0x00FFFFFF) or ((alpha * 255).toInt().coerceIn(0, 255) shl 24)

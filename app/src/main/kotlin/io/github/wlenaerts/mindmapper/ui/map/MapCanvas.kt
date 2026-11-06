@@ -49,6 +49,7 @@ fun MapCanvas(
     onViewportChange: (Viewport) -> Unit,
     modifier: Modifier = Modifier,
     selectedId: String? = null,
+    highlightId: String? = null,
     description: String = "",
     onTap: (topicId: String?) -> Unit = {},
     onDoubleTap: (topicId: String) -> Unit = {},
@@ -136,7 +137,7 @@ fun MapCanvas(
             native.save()
             native.translate(viewport.offsetX, viewport.offsetY)
             native.scale(viewport.scale, viewport.scale)
-            renderer.draw(native, map, layout, theme, images, selectedId = selectedId, dropTarget = dropTarget)
+            renderer.draw(native, map, layout, theme, images, selectedId = selectedId, dropTarget = dropTarget, highlightId = highlightId)
             draggedId?.let { id ->
                 val dx = (dragNow.x - dragStart.x) / viewport.scale
                 val dy = (dragNow.y - dragStart.y) / viewport.scale

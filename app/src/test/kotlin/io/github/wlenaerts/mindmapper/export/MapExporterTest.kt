@@ -55,4 +55,15 @@ class MapExporterTest {
         assertTrue("thick $thick thin $thin", thick > thin)
         assertTrue("taper thins the trunk sooner", thickFastTaper < thick)
     }
+
+    @Test
+    fun exportLeavesOutPlannedDurations() {
+        val timed = map.copy(root = map.root.copy(children = map.root.children.map { it.copy(durationSeconds = 300) }))
+        fun png(m: MindMap) = ByteArrayOutputStream().also { exporter.writePng(m, noImages, it) }.toByteArray()
+        val withDurations = png(timed).let { BitmapFactory.decodeByteArray(it, 0, it.size) }
+        val without = png(map).let { BitmapFactory.decodeByteArray(it, 0, it.size) }
+        assertEquals(without.width, withDurations.width)
+        assertEquals(without.height, withDurations.height)
+        assertEquals(inkedPixels(map), inkedPixels(timed))
+    }
 }

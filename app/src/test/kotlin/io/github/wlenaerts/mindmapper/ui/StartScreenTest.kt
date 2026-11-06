@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsNotSelected
@@ -104,6 +105,41 @@ class StartScreenTest {
         compose.onNodeWithText("OK").performClick()
         compose.onNodeWithContentDescription("Delete").assertIsDisplayed()
         compose.onNodeWithContentDescription("Branch style").assertDoesNotExist()
+    }
+
+    @Test
+    fun durationActionOnlyOnMainTopics() {
+        compose.setContent { MindmapperTheme { MindmapperApp() } }
+        compose.onNodeWithText("New mind map").performClick()
+        // The central topic is selected: no duration action.
+        compose.onNodeWithContentDescription("Central topic style").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Planned duration").assertDoesNotExist()
+        compose.onAllNodesWithContentDescription("Add subtopic")[0].performClick()
+        compose.onNodeWithText("OK").performClick()
+        compose.onNodeWithContentDescription("Planned duration").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Delete").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Add subtopic").performClick()
+        compose.onNodeWithText("OK").performClick()
+        compose.onNodeWithContentDescription("Delete").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Planned duration").assertDoesNotExist()
+    }
+
+    @Test
+    fun durationDialogAcceptsOnlyTheAllowedRange() {
+        compose.setContent { MindmapperTheme { MindmapperApp() } }
+        compose.onNodeWithText("New mind map").performClick()
+        compose.onAllNodesWithContentDescription("Add subtopic")[0].performClick()
+        compose.onNodeWithText("OK").performClick()
+        compose.onNodeWithContentDescription("Planned duration").performClick()
+        compose.onNodeWithTag("duration_minutes").performTextReplacement("181")
+        compose.onNodeWithText("OK").assertIsNotEnabled()
+        compose.onNodeWithTag("duration_minutes").performTextReplacement("5")
+        compose.onNodeWithText("OK").assertIsEnabled().performClick()
+        // Reopening shows the stored duration; clearing it is allowed.
+        compose.onNodeWithContentDescription("Planned duration").performClick()
+        compose.onNodeWithTag("duration_minutes").assertTextContains("5")
+        compose.onNodeWithTag("duration_minutes").performTextReplacement("")
+        compose.onNodeWithText("OK").assertIsEnabled()
     }
 
     @Test

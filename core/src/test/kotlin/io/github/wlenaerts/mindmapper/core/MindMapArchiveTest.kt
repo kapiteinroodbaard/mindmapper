@@ -35,7 +35,7 @@ class MindMapArchiveTest {
         root = Topic(
             id = "root", text = "Centre",
             children = listOf(
-                Topic(id = "a", text = "A", icon = "star", image = imageA, side = Side.LEFT, style = BranchStyle.PLANT, children = listOf(Topic(id = "a1", text = "A1"))),
+                Topic(id = "a", text = "A", icon = "star", image = imageA, side = Side.LEFT, style = BranchStyle.PLANT, durationSeconds = 300, children = listOf(Topic(id = "a1", text = "A1"))),
                 Topic(id = "b", text = "B\nsecond line", bold = false, italic = true, underline = true, image = imageB),
             ),
         ),
@@ -177,5 +177,24 @@ class MindMapArchiveTest {
         assertEquals(null, m.root.style)
         assertEquals(null, m.root.children.single().style)
         assertEquals(null, m.root.children.single().children.single().style)
+    }
+
+    @Test
+    fun durationIsStoredInSeconds() {
+        val json = MindMapArchive.encodeMap(sample)
+        assertTrue(json.contains("\"durationSeconds\": 300"))
+        // Branch b has no duration, so the key appears only once.
+        assertEquals(1, Regex("durationSeconds").findAll(json).count())
+        assertTrue(json.contains("\"formatVersion\": 1"))
+    }
+
+    @Test
+    fun durationsBelowMainBranchesAreDropped() {
+        val m = MindMapArchive.decodeMap(
+            """{"formatVersion": 1, "root": {"id": "r", "text": "x", "durationSeconds": 60, "children": [{"id": "a", "text": "a", "durationSeconds": 120, "children": [{"id": "a1", "text": "a1", "durationSeconds": 60}]}, {"id": "b", "text": "b", "durationSeconds": 0}]}}""",
+        )
+        assertEquals(null, m.root.durationSeconds)
+        assertEquals(listOf(120, null), m.root.children.map { it.durationSeconds })
+        assertEquals(null, m.root.children.first().children.single().durationSeconds)
     }
 }

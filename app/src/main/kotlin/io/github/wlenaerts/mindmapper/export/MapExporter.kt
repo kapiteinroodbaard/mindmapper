@@ -35,7 +35,7 @@ class MapExporter(context: Context) {
 
     @Synchronized
     fun writePdf(map: MindMap, images: ImageSource, out: OutputStream) {
-        val layout = renderer.layout(map)
+        val layout = renderer.layout(map, showDurations = false)
         val size = ExportSizes.pdf(layout.bounds)
         val pdf = PdfDocument()
         try {
@@ -64,7 +64,7 @@ class MapExporter(context: Context) {
 
     @Synchronized
     fun renderBitmap(map: MindMap, images: ImageSource, maxSide: Int): Bitmap {
-        val layout = renderer.layout(map)
+        val layout = renderer.layout(map, showDurations = false)
         var limit = maxSide
         while (true) {
             val size = ExportSizes.png(layout.bounds, limit)
@@ -84,7 +84,7 @@ class MapExporter(context: Context) {
         canvas.drawColor(Color.WHITE)
         canvas.scale(size.scale, size.scale)
         canvas.translate(margin - bounds.left, margin - bounds.top)
-        renderer.draw(canvas, map, renderer.layout(map), MapTheme.Light, images)
+        renderer.draw(canvas, map, renderer.layout(map, showDurations = false), MapTheme.Light, images)
     }
 
     private companion object {

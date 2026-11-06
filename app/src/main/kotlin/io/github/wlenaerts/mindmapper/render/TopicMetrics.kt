@@ -9,6 +9,7 @@ import io.github.wlenaerts.mindmapper.core.model.CentralShape
 import io.github.wlenaerts.mindmapper.core.model.MindMap
 import io.github.wlenaerts.mindmapper.core.model.Topic
 import io.github.wlenaerts.mindmapper.core.model.styleOrStandard
+import io.github.wlenaerts.mindmapper.core.timing.schedule
 import kotlin.math.ceil
 
 /** Sizes and inner layout of topics in layout units. Shared by measuring and drawing so both agree. */
@@ -32,6 +33,10 @@ class TopicMetrics {
         val iconY: Float,
         val imageX: Float,
         val imageY: Float,
+        /** The planned duration line under the text, or null when none is shown. */
+        val duration: StaticLayout?,
+        val durationX: Float,
+        val durationY: Float,
         val contentWidth: Float,
         val contentHeight: Float,
     ) {
@@ -45,7 +50,40 @@ class TopicMetrics {
     fun format(topic: Topic, depth: Int): Format =
         Format(topic.bold ?: style(depth).bold, topic.italic == true, topic.underline == true)
 
+    /** Formats a planned duration in whole minutes, such as "5 min". */
+    var minutesLabel: (Int) -> String = { "$it min" }
+
+    /**
+     * The planned duration shown on [topic] at [depth], in seconds: its own duration on a main branch, the
+     * total of all main branches on the central topic, and null when there is nothing to show.
+     */
+    fun shownDurationSeconds(map: MindMap, topic: Topic, depth: Int): Int? = when (depth) {
+        0 -> map.schedule().totalSeconds.takeIf { it > 0 }
+        1 -> topic.durationSeconds?.takeIf { it > 0 }
+        else -> null
+    }
+
     private val paints = HashMap<Pair<Int, Format>, TextPaint>()
+
+    private val durationPaints = HashMap<Int, TextPaint>()
+
+    private fun durationPaint(depth: Int): TextPaint = durationPaints.getOrPut(depth.coerceAtMost(2)) {
+        TextPaint(TextPaint.ANTI_ALIAS_FLAG).apply {
+            textSize = style(depth).textSize * DURATION_TEXT_SCALE
+            typeface = Typeface.DEFAULT
+        }
+    }
+
+    private val durationCache = HashMap<Pair<String, Int>, StaticLayout>()
+
+    private fun durationLayout(seconds: Int, depth: Int): StaticLayout {
+        val text = minutesLabel((seconds + 59) / 60)
+        return durationCache.getOrPut(text to depth.coerceAtMost(2)) {
+            val paint = durationPaint(depth)
+            val width = ceil(paint.measureText(text)).toInt().coerceAtLeast(1)
+            StaticLayout.Builder.obtain(text, 0, text.length, paint, width).setIncludePad(false).build()
+        }
+    }
 
     fun paint(depth: Int, format: Format): TextPaint = paints.getOrPut(depth.coerceAtMost(2) to format) {
         val style = style(depth)
@@ -78,8 +116,11 @@ class TopicMetrics {
                 .build()
         }
 
-    /** Content measured without the box padding or central shape. */
-    fun content(topic: Topic, depth: Int): Content {
+    /**
+     * Content measured without the box padding or central shape. [durationSeconds] adds a duration line
+     * under the text.
+     */
+    fun content(topic: Topic, depth: Int, durationSeconds: Int? = null): Content {
         val text = textLayout(topic.text, depth, format(topic, depth))
         // Wrapped lines can be narrower than the layout and are then centred inside it, so measure the
         // drawn extent of the lines and shift by its left edge to keep the text centred in the box.
@@ -96,8 +137,12 @@ class TopicMetrics {
         val imageW = image?.width ?: 0f
         val imageH = image?.height ?: 0f
         val imageGap = if (image != null) 8f else 0f
-        val width = maxOf(rowW, imageW)
-        val height = imageH + imageGap + rowH
+        val duration = durationSeconds?.let { durationLayout(it, depth) }
+        val durationW = duration?.getLineWidth(0) ?: 0f
+        val durationH = duration?.height?.toFloat() ?: 0f
+        val durationGap = if (duration != null) 2f else 0f
+        val width = maxOf(rowW, imageW, durationW)
+        val height = imageH + imageGap + rowH + durationGap + durationH
         val rowX = if (depth == 0) (width - rowW) / 2 else 0f
         val rowY = imageH + imageGap
         return Content(
@@ -109,13 +154,16 @@ class TopicMetrics {
             iconY = rowY + (rowH - iconSize) / 2,
             imageX = (width - imageW) / 2,
             imageY = 0f,
+            duration = duration,
+            durationX = if (depth == 0) (width - durationW) / 2 else rowX + iconSize + iconGap,
+            durationY = rowY + rowH + durationGap,
             contentWidth = width,
             contentHeight = height,
         )
     }
 
-    fun measure(map: MindMap, topic: Topic, depth: Int): Size {
-        val c = content(topic, depth)
+    fun measure(map: MindMap, topic: Topic, depth: Int, showDurations: Boolean = false): Size {
+        val c = content(topic, depth, if (showDurations) shownDurationSeconds(map, topic, depth) else null)
         val s = style(depth)
         val w = c.contentWidth + 2 * s.padH
         val h = c.contentHeight + 2 * s.padV
@@ -132,3 +180,6 @@ class TopicMetrics {
         }
     }
 }
+
+/** Size of the duration line's text relative to the topic text of the same level. */
+private const val DURATION_TEXT_SCALE = 0.75f

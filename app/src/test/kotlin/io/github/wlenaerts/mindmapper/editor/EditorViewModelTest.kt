@@ -57,6 +57,25 @@ class EditorViewModelTest {
     }
 
     @Test
+    fun durationIsUndoable() {
+        val vm = newEditor()
+        vm.addChild()
+        val main = vm.state.value.selectedId!!
+        val before = vm.state.value.layout!![main]!!.rect.height
+        vm.setDuration(main, 5)
+        assertEquals(300, vm.state.value.map!!.find(main)!!.durationSeconds)
+        assertTrue(vm.state.value.layout!![main]!!.rect.height > before)
+        vm.setDuration(main, 8)
+        vm.undo()
+        assertEquals(300, vm.state.value.map!!.find(main)!!.durationSeconds)
+        vm.setDuration(main, null)
+        assertNull(vm.state.value.map!!.find(main)!!.durationSeconds)
+        vm.undo()
+        vm.undo()
+        assertNull(vm.state.value.map!!.find(main)!!.durationSeconds)
+    }
+
+    @Test
     fun addEditDeleteUndoRedo() {
         val vm = newEditor()
         vm.addChild()

@@ -55,6 +55,18 @@ fun MindMap.setBranchStyle(id: String, style: BranchStyle): MindMap {
     return updateTopic(id) { it.copy(style = style.takeIf { s -> s != BranchStyle.STANDARD }) }
 }
 
+/**
+ * Sets the planned duration of main branch [id] to [minutes], clamped to the allowed range; null or 0
+ * removes it. Other topics have no duration of their own.
+ */
+fun MindMap.setDuration(id: String, minutes: Int?): MindMap {
+    if (root.children.none { it.id == id }) return this
+    val seconds = minutes?.takeIf { it > 0 }
+        ?.coerceIn(MindMap.MIN_DURATION_MINUTES, MindMap.MAX_DURATION_MINUTES)
+        ?.let { it * 60 }
+    return updateTopic(id) { it.copy(durationSeconds = seconds) }
+}
+
 /** Appends [child] as the last child of [parentId]. Under the central topic, [side] places the new main branch. */
 fun MindMap.addChild(parentId: String, child: Topic, side: Side? = null): MindMap {
     val placed = if (parentId == root.id) child.copy(side = side) else child
@@ -87,7 +99,7 @@ private fun MindMap.insert(parentId: String, index: Int, topic: Topic): MindMap 
 /**
  * Moves topic [id] with its subtree to position [index] among the children of [parentId] (index as seen
  * before the move). Under the central topic the branch gets [side] (null keeps its current side); elsewhere
- * the side and branch style are cleared. Moving the central topic, or into the topic's own subtree, is rejected.
+ * the side, branch style and duration are cleared. Moving the central topic, or into the topic's own subtree, is rejected.
  */
 fun MindMap.move(id: String, parentId: String, index: Int, side: Side? = null): MindMap {
     if (id == root.id || isInSubtree(id, parentId)) return this
@@ -96,7 +108,7 @@ fun MindMap.move(id: String, parentId: String, index: Int, side: Side? = null): 
     if (find(parentId) == null) return this
     val oldIndex = oldParent.children.indexOfFirst { it.id == id }
     val target = if (oldParent.id == parentId && oldIndex < index) index - 1 else index
-    val moved = if (parentId == root.id) topic.copy(side = side ?: topic.side) else topic.copy(side = null, style = null)
+    val moved = if (parentId == root.id) topic.copy(side = side ?: topic.side) else topic.copy(side = null, style = null, durationSeconds = null)
     val removed = copy(root = removeFrom(root, id))
     return removed.insert(parentId, target, moved)
 }

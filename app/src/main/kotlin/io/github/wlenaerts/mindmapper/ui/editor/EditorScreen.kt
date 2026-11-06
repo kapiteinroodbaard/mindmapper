@@ -71,6 +71,7 @@ private sealed interface EditorDialog {
     data class EditImage(val topicId: String) : EditorDialog
     data object Style : EditorDialog
     data class BranchStyle(val topicId: String) : EditorDialog
+    data class Duration(val topicId: String) : EditorDialog
     data object Rename : EditorDialog
     data object Unsaved : EditorDialog
     data class Export(val format: ExportFormat) : EditorDialog
@@ -197,7 +198,7 @@ fun EditorScreen(viewModel: EditorViewModel, onClose: () -> Unit, onPresent: () 
                     IconButton(onClick = { save() }, enabled = state.map != null) {
                         Icon(painterResource(R.drawable.ic_save), contentDescription = stringResource(R.string.action_save))
                     }
-                    IconButton(onClick = { viewModel.autosaveNow(); onPresent() }, enabled = state.map != null) {
+                    IconButton(onClick = { viewModel.autosaveNow(); viewModel.presentationTimer.reset(); onPresent() }, enabled = state.map != null) {
                         Icon(Icons.Filled.PlayArrow, contentDescription = stringResource(R.string.action_present))
                     }
                     Box {
@@ -280,6 +281,7 @@ fun EditorScreen(viewModel: EditorViewModel, onClose: () -> Unit, onPresent: () 
                         },
                         onIcon = { dialog = EditorDialog.ChooseIcon(selected) },
                         onStyle = { dialog = if (selectedBox.depth == 0) EditorDialog.Style else EditorDialog.BranchStyle(selected) },
+                        onDuration = { dialog = EditorDialog.Duration(selected) },
                         onDelete = viewModel::deleteSelected,
                     )
                     // Every topic action is on the map now; the toolbar is kept for actions that belong there.
@@ -335,6 +337,13 @@ fun EditorScreen(viewModel: EditorViewModel, onClose: () -> Unit, onPresent: () 
                 colorSlot = state.layout?.get(d.topicId)?.colorSlot ?: 0,
                 renderer = viewModel.renderer,
                 onPick = { viewModel.setBranchStyle(d.topicId, it) },
+                onDismiss = { dialog = null },
+            )
+        }
+        is EditorDialog.Duration -> map?.find(d.topicId)?.let { topic ->
+            DurationDialog(
+                minutes = topic.durationSeconds?.let { (it + 59) / 60 },
+                onConfirm = { viewModel.setDuration(d.topicId, it); dialog = null },
                 onDismiss = { dialog = null },
             )
         }

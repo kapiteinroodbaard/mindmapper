@@ -9,6 +9,7 @@ import io.github.wlenaerts.mindmapper.core.edit.move
 import io.github.wlenaerts.mindmapper.core.edit.resolveDrop
 import io.github.wlenaerts.mindmapper.core.edit.setBranchStyle
 import io.github.wlenaerts.mindmapper.core.edit.setCentralShape
+import io.github.wlenaerts.mindmapper.core.edit.setDuration
 import io.github.wlenaerts.mindmapper.core.edit.setIcon
 import io.github.wlenaerts.mindmapper.core.edit.setImage
 import io.github.wlenaerts.mindmapper.core.edit.setImageWidth
@@ -151,6 +152,33 @@ class MapEditsTest {
         val below = m.move("b", "a", 0)
         assertNull(below.find("b")!!.style)
         assertNull(below.move("b", "root", 2).find("b")!!.style)
+    }
+
+    @Test
+    fun durationOnlyOnMainBranches() {
+        val m = map(branch("a", 1), topic("b"))
+        assertEquals(300, m.setDuration("a", 5).find("a")!!.durationSeconds)
+        assertNull(m.setDuration("a", 5).setDuration("a", null).find("a")!!.durationSeconds)
+        assertNull(m.setDuration("a", 5).setDuration("a", 0).find("a")!!.durationSeconds)
+        assertEquals(180 * 60, m.setDuration("a", 500).find("a")!!.durationSeconds)
+        assertEquals(m, m.setDuration("a.0", 5))
+        assertEquals(m, m.setDuration("root", 5))
+    }
+
+    @Test
+    fun moveKeepsDurationAmongMainBranchesAndDropsItBelow() {
+        val m = map(branch("a", 1), topic("b")).setDuration("b", 5)
+        assertEquals(300, m.move("b", "root", 0, Side.LEFT).find("b")!!.durationSeconds)
+        val below = m.move("b", "a", 0)
+        assertNull(below.find("b")!!.durationSeconds)
+        assertNull(below.move("b", "root", 2).find("b")!!.durationSeconds)
+    }
+
+    @Test
+    fun topicAfterTimedBranchHasNoDuration() {
+        val m = map(topic("a")).setDuration("a", 5).addSiblingAfter("a", Topic(id = "b"))
+        assertNull(m.find("b")!!.durationSeconds)
+        assertEquals(300, m.find("a")!!.durationSeconds)
     }
 
     @Test

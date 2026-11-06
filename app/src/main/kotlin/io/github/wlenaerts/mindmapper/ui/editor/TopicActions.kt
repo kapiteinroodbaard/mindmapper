@@ -52,6 +52,7 @@ fun TopicActions(
     onImage: () -> Unit,
     onIcon: () -> Unit,
     onStyle: () -> Unit,
+    onDuration: () -> Unit,
     onDelete: () -> Unit,
 ) {
     val density = LocalDensity.current
@@ -94,6 +95,7 @@ fun TopicActions(
             onImage = onImage,
             onIcon = onIcon,
             onStyle = onStyle,
+            onDuration = onDuration,
             onDelete = onDelete,
         )
     }
@@ -150,6 +152,7 @@ private fun ActionBar(
     onImage: () -> Unit,
     onIcon: () -> Unit,
     onStyle: () -> Unit,
+    onDuration: () -> Unit,
     onDelete: () -> Unit,
 ) {
     Surface(modifier = modifier, shape = RoundedCornerShape(24.dp), tonalElevation = 6.dp, shadowElevation = 6.dp) {
@@ -166,6 +169,12 @@ private fun ActionBar(
             if (depth <= 1) {
                 val label = stringResource(if (isRoot) R.string.action_style else R.string.action_branch_style)
                 IconButton(onClick = onStyle) { Icon(painterResource(R.drawable.ic_palette), label) }
+            }
+            // Only main branches have a planned duration; the central topic shows their total.
+            if (depth == 1) {
+                IconButton(onClick = onDuration) {
+                    Icon(painterResource(R.drawable.mm_icon_timer), stringResource(R.string.action_duration))
+                }
             }
             if (!isRoot) {
                 IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, stringResource(R.string.action_delete)) }

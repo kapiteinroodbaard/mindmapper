@@ -24,8 +24,11 @@ data class TopicBox(
     val style: BranchStyle = BranchStyle.STANDARD,
 )
 
-/** The result of laying out a map: a box per topic (in depth-first order) and the overall bounds. */
-class MapLayout(val boxes: List<TopicBox>) {
+/**
+ * The result of laying out a map: a box per topic (in depth-first order) and the overall bounds.
+ * [showsDurations] tells whether the boxes were measured with planned durations, so drawing matches.
+ */
+class MapLayout(val boxes: List<TopicBox>, val showsDurations: Boolean = false) {
     private val byId = boxes.associateBy { it.topicId }
 
     val bounds: Rect = boxes.map { it.rect }.reduce(Rect::union)
@@ -57,9 +60,14 @@ object MapLayouter {
     /** Vertical distance between neighbouring sibling subtrees, by the siblings' depth. */
     fun verticalGap(depth: Int): Float = if (depth == 1) 28f else 12f
 
-    fun layout(map: MindMap, measure: (topic: Topic, depth: Int) -> Size): MapLayout = LayoutRun(map, measure).run()
+    fun layout(map: MindMap, measure: (topic: Topic, depth: Int) -> Size, showsDurations: Boolean = false): MapLayout =
+        LayoutRun(map, showsDurations, measure).run()
 
-    private class LayoutRun(private val map: MindMap, private val measure: (Topic, Int) -> Size) {
+    private class LayoutRun(
+        private val map: MindMap,
+        private val showsDurations: Boolean,
+        private val measure: (Topic, Int) -> Size,
+    ) {
         private val sizes = HashMap<String, Size>()
         private val heights = HashMap<String, Float>()
         private val boxes = ArrayList<TopicBox>()
@@ -93,7 +101,7 @@ object MapLayouter {
             // Keep depth-first order (matching the model) so parents are drawn before their children.
             val order = map.topics().map { it.id }.withIndex().associate { (i, id) -> id to i }
             boxes.sortBy { order.getValue(it.topicId) }
-            return MapLayout(boxes)
+            return MapLayout(boxes, showsDurations)
         }
 
         private fun measureAll(topic: Topic, depth: Int) {

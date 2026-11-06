@@ -73,8 +73,9 @@ data class TopicImage(val path: String, val width: Float, val aspect: Float) {
 }
 
 /**
- * A topic in the tree. [side] and [style] are only meaningful for main branches (children of the central
- * topic); [style] null means [BranchStyle.STANDARD].
+ * A topic in the tree. [side], [style] and [durationSeconds] are only meaningful for main branches
+ * (children of the central topic); [style] null means [BranchStyle.STANDARD] and [durationSeconds] null
+ * means the branch has no planned duration.
  * [bold] null means the default for the topic's level (bold for the central topic and main branches);
  * [italic] and [underline] are null when off, so they are left out of the file.
  */
@@ -89,6 +90,7 @@ data class Topic(
     val image: TopicImage? = null,
     val side: Side? = null,
     val style: BranchStyle? = null,
+    val durationSeconds: Int? = null,
     val children: List<Topic> = emptyList(),
 )
 
@@ -146,6 +148,8 @@ data class MindMap(
         const val DEFAULT_TRUNK_TAPER = 1f
         const val MIN_TRUNK_TAPER = 1f
         const val MAX_TRUNK_TAPER = 5f
+        const val MIN_DURATION_MINUTES = 1
+        const val MAX_DURATION_MINUTES = 180
     }
 }
 

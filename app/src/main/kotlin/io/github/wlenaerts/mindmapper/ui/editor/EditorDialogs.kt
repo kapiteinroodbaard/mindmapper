@@ -66,6 +66,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import io.github.wlenaerts.mindmapper.R
@@ -137,6 +138,44 @@ private fun FormatToggle(label: String, symbol: String, checked: Boolean, style:
             contentDescription = label
             toggleableState = ToggleableState(checked)
         },
+    )
+}
+
+/**
+ * Asks for the planned duration of a main branch in whole minutes. An empty value or 0 removes the
+ * duration; other values must lie in the allowed range.
+ */
+@Composable
+fun DurationDialog(minutes: Int?, onConfirm: (Int?) -> Unit, onDismiss: () -> Unit) {
+    val initial = minutes?.toString() ?: ""
+    var value by remember { mutableStateOf(TextFieldValue(initial, TextRange(0, initial.length))) }
+    val text = value.text.trim()
+    val parsed = text.toIntOrNull()
+    val valid = text.isEmpty() || parsed == 0 ||
+        (parsed != null && parsed in MindMap.MIN_DURATION_MINUTES..MindMap.MAX_DURATION_MINUTES)
+    val result = parsed?.takeIf { it > 0 }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.duration_title)) },
+        text = {
+            OutlinedTextField(
+                value = value,
+                onValueChange = { new -> if (new.text.all { it.isDigit() }) value = new },
+                modifier = Modifier.fillMaxWidth().focusRequester(focus).testTag("duration_minutes"),
+                singleLine = true,
+                label = { Text(stringResource(R.string.duration_minutes_field)) },
+                isError = !valid,
+                supportingText = { Text(stringResource(R.string.duration_hint)) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { if (valid) onConfirm(result) }),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(result) }, enabled = valid) { Text(stringResource(R.string.action_ok)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
     )
 }
 

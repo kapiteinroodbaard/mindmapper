@@ -15,6 +15,7 @@ import io.github.wlenaerts.mindmapper.core.edit.addSiblingAfter
 import io.github.wlenaerts.mindmapper.core.edit.delete
 import io.github.wlenaerts.mindmapper.core.edit.setCentralColor
 import io.github.wlenaerts.mindmapper.core.edit.setBranchStyle
+import io.github.wlenaerts.mindmapper.core.edit.setDuration
 import io.github.wlenaerts.mindmapper.core.edit.setCentralShape
 import io.github.wlenaerts.mindmapper.core.edit.setIcon
 import io.github.wlenaerts.mindmapper.core.edit.setImage
@@ -38,6 +39,7 @@ import io.github.wlenaerts.mindmapper.document.isValidTitle
 import io.github.wlenaerts.mindmapper.document.titleFromFileName
 import io.github.wlenaerts.mindmapper.export.ExportFormat
 import io.github.wlenaerts.mindmapper.render.MapRenderer
+import io.github.wlenaerts.mindmapper.ui.presentation.PresentationTimer
 import io.github.wlenaerts.mindmapper.render.TopicMetrics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -79,6 +81,9 @@ data class EditorState(
 class EditorViewModel(application: Application, savedState: SavedStateHandle) : AndroidViewModel(application) {
     private val app = application as MindmapperApplication
     val renderer = MapRenderer(application)
+
+    /** The presentation timer lives here so it survives rotation; it is reset when presenting starts. */
+    val presentationTimer = PresentationTimer()
 
     /** Embedded images by path; only grows during a session, unused ones are dropped on save. */
     private val images = ConcurrentHashMap<String, ByteArray>()
@@ -227,6 +232,9 @@ class EditorViewModel(application: Application, savedState: SavedStateHandle) : 
     fun setTrunk(width: Float, taper: Float) = edit({ it.setTrunk(width, taper) })
 
     fun setBranchStyle(id: String, style: BranchStyle) = edit({ it.setBranchStyle(id, style) })
+
+    /** Sets the planned duration of main branch [id] in minutes; null removes it. */
+    fun setDuration(id: String, minutes: Int?) = edit({ it.setDuration(id, minutes) })
 
     /**
      * Renames the map to [name]. A saved map's file is renamed; a never-saved map keeps the name as the

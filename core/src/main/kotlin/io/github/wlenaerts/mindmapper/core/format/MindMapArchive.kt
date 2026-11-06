@@ -100,17 +100,24 @@ object MindMapArchive {
             file.centralColor,
             file.trunkWidth.coerceIn(MindMap.MIN_TRUNK_WIDTH, MindMap.MAX_TRUNK_WIDTH),
             file.trunkTaper.coerceIn(MindMap.MIN_TRUNK_TAPER, MindMap.MAX_TRUNK_TAPER),
-            normalizeStyles(file.root),
+            normalizeMainBranchFields(file.root),
         )
     }
 
-    /** Keeps branch styles only on main branches, and stores standard as no style. */
-    private fun normalizeStyles(root: Topic): Topic {
-        fun clear(topic: Topic): Topic = topic.copy(style = null, children = topic.children.map(::clear))
+    /**
+     * Keeps branch styles and durations only on main branches, stores standard as no style and drops
+     * durations that are not positive.
+     */
+    private fun normalizeMainBranchFields(root: Topic): Topic {
+        fun clear(topic: Topic): Topic = topic.copy(style = null, durationSeconds = null, children = topic.children.map(::clear))
         return root.copy(
             style = null,
+            durationSeconds = null,
             children = root.children.map { main ->
-                clear(main).copy(style = main.style?.takeIf { it != BranchStyle.STANDARD })
+                clear(main).copy(
+                    style = main.style?.takeIf { it != BranchStyle.STANDARD },
+                    durationSeconds = main.durationSeconds?.takeIf { it > 0 },
+                )
             },
         )
     }

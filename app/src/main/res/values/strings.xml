@@ -100,4 +100,10 @@
     <string name="format_underline">Underline</string>
     <string name="style_trunk_width">Trunk width</string>
     <string name="style_trunk_taper">Trunk taper</string>
+    <string name="duration_minutes">%1$d min</string>
+    <string name="action_duration">Planned duration</string>
+    <string name="duration_title">Planned duration</string>
+    <string name="duration_minutes_field">Minutes</string>
+    <string name="duration_hint">From 1 to 180 minutes. Leave empty for no duration.</string>
+    <string name="timer_description">Presentation timer. Tap to start or pause, long press to reset.</string>
 </resources>

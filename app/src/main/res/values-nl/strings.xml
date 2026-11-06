@@ -95,4 +95,10 @@
     <string name="format_underline">Onderstrepen</string>
     <string name="style_trunk_width">Dikte stam</string>
     <string name="style_trunk_taper">Versmalling stam</string>
+    <string name="duration_minutes">%1$d min</string>
+    <string name="action_duration">Geplande duur</string>
+    <string name="duration_title">Geplande duur</string>
+    <string name="duration_minutes_field">Minuten</string>
+    <string name="duration_hint">Van 1 tot 180 minuten. Laat leeg voor geen duur.</string>
+    <string name="timer_description">Presentatietimer. Tik om te starten of te pauzeren, houd ingedrukt om terug te zetten.</string>
 </resources>

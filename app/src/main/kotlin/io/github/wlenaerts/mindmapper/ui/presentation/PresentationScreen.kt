@@ -42,6 +42,21 @@ import io.github.wlenaerts.mindmapper.ui.map.MIN_ZOOM
 import io.github.wlenaerts.mindmapper.ui.map.MapCanvas
 import io.github.wlenaerts.mindmapper.ui.map.fitViewport
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
+import io.github.wlenaerts.mindmapper.core.timing.schedule
+import kotlinx.coroutines.delay
 
 /** Full-screen, read-only view used as the presenter's guide. Shares the editor's document. */
 @Composable
@@ -54,6 +69,18 @@ fun PresentationScreen(viewModel: EditorViewModel, onExit: () -> Unit) {
     var viewport by remember { mutableStateOf<Viewport?>(null) }
     var focusedId by remember { mutableStateOf<String?>(null) }
     val progress = remember { Animatable(0f) }
+    val timer = viewModel.presentationTimer
+    val timerState by timer.state.collectAsState()
+    val schedule = remember(map) { map.schedule() }
+    var elapsedSeconds by remember { mutableLongStateOf(timer.elapsedMillis() / 1000) }
+    LaunchedEffect(timerState) {
+        elapsedSeconds = timer.elapsedMillis() / 1000
+        while (timerState.running) {
+            delay(TIMER_REFRESH_MILLIS)
+            elapsedSeconds = timer.elapsedMillis() / 1000
+        }
+    }
+    val scheduledId = schedule.scheduledAt(elapsedSeconds)
 
     ImmersiveMode()
 
@@ -99,6 +126,17 @@ fun PresentationScreen(viewModel: EditorViewModel, onExit: () -> Unit) {
                 onViewportChange = { viewport = it },
                 description = stringResource(R.string.mindmap_canvas),
                 onTap = { id -> if (id == null || id == map.root.id) showOverview() else focus(id) },
+                highlightId = scheduledId,
+            )
+        }
+        if (!schedule.isEmpty) {
+            TimerPill(
+                elapsedSeconds = elapsedSeconds,
+                branchText = scheduledId?.let { map.find(it)?.text },
+                overTime = elapsedSeconds >= schedule.totalSeconds,
+                onToggle = timer::toggle,
+                onReset = timer::reset,
+                modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
             )
         }
         Row(Modifier.align(Alignment.TopEnd).padding(16.dp)) {
@@ -107,6 +145,56 @@ fun PresentationScreen(viewModel: EditorViewModel, onExit: () -> Unit) {
             }
             FilledTonalIconButton(onClick = onExit) {
                 Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.action_exit_presentation))
+            }
+        }
+    }
+}
+
+/**
+ * The count-up timer: elapsed time and the text of the scheduled main branch, red without a name once
+ * the total is reached. A tap starts or pauses it, a long press resets it.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun TimerPill(
+    elapsedSeconds: Long,
+    branchText: String?,
+    overTime: Boolean,
+    onToggle: () -> Unit,
+    onReset: () -> Unit,
+    modifier: Modifier,
+) {
+    val description = stringResource(R.string.timer_description)
+    Surface(
+        modifier = modifier
+            .widthIn(max = 360.dp)
+            .clip(CircleShape)
+            .combinedClickable(onClick = onToggle, onLongClick = onReset)
+            .semantics { contentDescription = description }
+            .testTag("presentation_timer"),
+        shape = CircleShape,
+        color = if (overTime) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = if (overTime) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onSecondaryContainer,
+        shadowElevation = 4.dp,
+    ) {
+        Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                formatElapsed(elapsedSeconds),
+                style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
+                modifier = Modifier.testTag("timer_elapsed"),
+            )
+            if (!overTime && branchText != null) {
+                Text(
+                    branchText.lines().first(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.testTag("timer_branch"),
+                )
             }
         }
     }
@@ -132,3 +220,6 @@ private fun ImmersiveMode() {
 
 /** Zooming in on a branch never magnifies more than this, so text stays comfortable to read. */
 private const val FOCUS_MAX_ZOOM = 2.5f
+
+/** How often the running timer is re-read; often enough to show every second on time. */
+private const val TIMER_REFRESH_MILLIS = 200L
