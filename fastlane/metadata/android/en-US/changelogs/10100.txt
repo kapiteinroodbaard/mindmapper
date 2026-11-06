@@ -1,0 +1,1 @@
+A planned duration per main branch, shown under its text with the total on the central topic, and a count-up timer in presentation mode that highlights the branch you should be at.
