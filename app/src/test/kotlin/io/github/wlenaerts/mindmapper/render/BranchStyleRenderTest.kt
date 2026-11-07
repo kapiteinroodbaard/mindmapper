@@ -108,9 +108,13 @@ class BranchStyleRenderTest {
                 listOf(left to top, right to top, left to bottom, right to bottom).forEach { (x, y) ->
                     assertTrue("$s '$text' corner ($x, $y)", region.contains(x, y))
                 }
-                // Main branches end on the box outline at the vertical centre.
-                val inset = BranchGeometry.mainBoxInset(s, box)
-                assertTrue("$s left end", region.contains((box.left + inset + 1).toInt(), box.centerY.toInt()))
+                // The flat end of a branch, at its thickest pulse, lies fully inside the box on both sides.
+                val half = 5f * 1.8f / 2
+                val join = BranchGeometry.mainBoxJoin(s, box, half)
+                for (y in listOf(box.centerY - half, box.centerY + half)) {
+                    assertTrue("$s left end at $y", region.contains((box.left + join).toInt(), y.toInt()))
+                    assertTrue("$s right end at $y", region.contains((box.right - join).toInt(), y.toInt()))
+                }
             }
         }
     }

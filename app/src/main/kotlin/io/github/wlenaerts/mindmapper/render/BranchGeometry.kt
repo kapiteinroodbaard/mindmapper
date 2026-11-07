@@ -11,6 +11,7 @@ import kotlin.math.hypot
 import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlin.random.Random
 
 /**
@@ -53,6 +54,11 @@ class Centreline(val xs: FloatArray, val ys: FloatArray, val nx: FloatArray, val
 /** Line shapes, outlines and box shapes for the branch styles. Pure geometry, shared by all outputs. */
 object BranchGeometry {
     private const val CURVE_STEPS = 40
+    private const val TIP_STEPS = 64
+    /** Corner radius of the standard and blurred main boxes. */
+    private const val BOX_RADIUS = 10f
+    /** Extra depth and height so that anti-aliased edges of a branch end stay under its box. */
+    private const val JOIN_OVERLAP = 1.5f
 
     /** The smooth S-curve used by the standard and plant styles, leaving and arriving horizontally. */
     fun curve(x0: Float, y0: Float, x3: Float, y3: Float): Centreline {
@@ -163,18 +169,56 @@ object BranchGeometry {
         BranchStyle.STRAIGHT -> Size(w + 0.5f * h, h)
     }
 
-    /** How far inside [r] the box outline lies at the box's vertical centre, where main branches end. */
-    fun mainBoxInset(style: BranchStyle, r: Rect): Float = if (style == BranchStyle.LIGHTNING) r.height * 0.15f else 0f
+    /**
+     * How far inside the left or right side of [r] a branch of half width [half] must end (or start) at the
+     * box's vertical centre, so that the box covers the branch's flat end on both sides of its centreline.
+     */
+    fun mainBoxJoin(style: BranchStyle, r: Rect, half: Float): Float {
+        val h = r.height
+        val need = half + JOIN_OVERLAP
+        val depth = when (style) {
+            BranchStyle.STANDARD, BranchStyle.BLURRED -> {
+                // Inside the straight part of the side, or as deep as the rounded corner needs.
+                val beyond = (need - (h / 2 - BOX_RADIUS)).coerceIn(0f, BOX_RADIUS)
+                BOX_RADIUS - sqrt(BOX_RADIUS * BOX_RADIUS - beyond * beyond)
+            }
+            BranchStyle.STRAIGHT -> (need - (h / 2 - h / 4)).coerceAtLeast(0f)
+            // The side slants by 0.3 h over the full height, so it lies 0.15 h in at the centre.
+            BranchStyle.LIGHTNING -> h * 0.15f + 0.3f * need
+            BranchStyle.PLANT -> plantTipDepth(r, need)
+        }
+        return depth + JOIN_OVERLAP
+    }
+
+    /** How far from its tip the leaf-shaped box is at least [half] high on each side of its centre. */
+    private fun plantTipDepth(r: Rect, half: Float): Float {
+        val h = r.height
+        val inner = plantInner(r)
+        val shoulder = h * 0.06f
+        // The tip curve, measured from the tip: x along the box, y as height above the centre.
+        val x1 = inner * 0.5f; val y1 = h * 0.25f
+        val x2 = inner * 0.7f; val y2 = h / 2 - shoulder
+        val x3 = inner; val y3 = h / 2 - shoulder
+        for (i in 0..TIP_STEPS) {
+            val t = i / TIP_STEPS.toFloat()
+            val u = 1 - t
+            val y = 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y3
+            if (y >= half) return 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t * x3
+        }
+        return inner
+    }
+
+    /** The length of each pointed end of the leaf-shaped box in [r]. */
+    private fun plantInner(r: Rect): Float = 0.8f * r.height / 1.25f
 
     /** The outline of a main topic box in [style] filling [r]. */
     fun mainBoxPath(style: BranchStyle, r: Rect): Path = Path().apply {
         when (style) {
-            BranchStyle.STANDARD, BranchStyle.BLURRED -> addRoundRect(r.toRectF(), 10f, 10f, Path.Direction.CW)
+            BranchStyle.STANDARD, BranchStyle.BLURRED -> addRoundRect(r.toRectF(), BOX_RADIUS, BOX_RADIUS, Path.Direction.CW)
             BranchStyle.PLANT -> {
                 // A leaf: pointed tips at the left and right, a gently bulging middle over the content.
                 val h = r.height
-                val content = r.width - 1.6f * h / 1.25f
-                val inner = (r.width - content) / 2
+                val inner = plantInner(r)
                 val shoulder = h * 0.06f
                 moveTo(r.left, r.centerY)
                 cubicTo(r.left + inner * 0.5f, r.top + h * 0.25f, r.left + inner * 0.7f, r.top + shoulder, r.left + inner, r.top + shoulder)
