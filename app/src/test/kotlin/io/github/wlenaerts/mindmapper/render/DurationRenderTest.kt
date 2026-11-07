@@ -9,6 +9,7 @@ import io.github.wlenaerts.mindmapper.core.edit.setDuration
 import io.github.wlenaerts.mindmapper.core.layout.Rect
 import io.github.wlenaerts.mindmapper.core.model.BranchStyle
 import io.github.wlenaerts.mindmapper.core.model.MindMap
+import io.github.wlenaerts.mindmapper.core.model.Side
 import io.github.wlenaerts.mindmapper.core.model.Topic
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -100,7 +101,7 @@ class DurationRenderTest {
             it.copy(children = listOf(Topic(id = "${it.id}1", text = "Sub ${it.text}")))
         }))
         for (theme in listOf(MapTheme.Light, MapTheme.Dark)) {
-            for (style in listOf(BranchStyle.STANDARD, BranchStyle.BLURRED)) {
+            for (style in listOf(BranchStyle.STANDARD, BranchStyle.BLURRED, BranchStyle.PLANT)) {
                 val m = withSubtopics.copy(root = withSubtopics.root.copy(children = withSubtopics.root.children.map { it.copy(style = style) }))
                 val layout = renderer.layout(m)
                 val plainBitmap = render(m, theme, null)
@@ -109,10 +110,13 @@ class DurationRenderTest {
                 // The main branch starts inside the central topic, so the branch area runs from there.
                 val area = layout.subtreeBounds(m, "c")!!.union(layout["root"]!!.rect)
                 val sub = layout["c1"]!!.rect
+                val box = layout["c"]!!.rect
                 val dx = 40 - layout.bounds.left
                 val dy = 40 - layout.bounds.top
                 var changedNear = 0
                 var changedAtSubtopic = 0
+                var changedAroundBox = 0
+                var changedAtSubtopicEnd = 0
                 for (y in 0 until plainBitmap.height) for (x in 0 until plainBitmap.width) {
                     if (plainBitmap.getPixel(x, y) == highlighted.getPixel(x, y)) continue
                     val lx = x - dx
@@ -121,9 +125,17 @@ class DurationRenderTest {
                     assertTrue("$style pixel ($x, $y) changed away from the highlighted branch", near)
                     changedNear++
                     if (lx >= sub.left && lx <= sub.right && ly >= sub.bottom - 10 && ly <= sub.bottom + 10) changedAtSubtopic++
+                    val aroundBox = lx >= box.left - 5 && lx <= box.right + 5 && ly >= box.top - 5 && ly <= box.bottom + 5 &&
+                        !(lx > box.left + 2 && lx < box.right - 2 && ly > box.top + 2 && ly < box.bottom - 2)
+                    if (aroundBox) changedAroundBox++
+                    // The plant leaf sits past the outer end of the underline and points up, above the line.
+                    val beyondEnd = if (layout["c1"]!!.side == Side.LEFT) lx < sub.left - 1 && lx >= sub.left - 20 else lx > sub.right + 1 && lx <= sub.right + 20
+                    if (beyondEnd && ly >= sub.bottom - 20 && ly <= sub.bottom - 4) changedAtSubtopicEnd++
                 }
                 assertTrue("$style highlight is visible", changedNear > 100)
                 assertTrue("$style subtopic underline thickens too", changedAtSubtopic > 10)
+                assertTrue("$style main topic box grows with its branch", changedAroundBox > 50)
+                if (style == BranchStyle.PLANT) assertTrue("plant leaf at the subtopic end grows", changedAtSubtopicEnd > 20)
             }
         }
     }
