@@ -117,12 +117,13 @@ zooms, pans or focuses on topics. Leaving presentation mode SHALL reset it.
 
 ### Requirement: Scheduled branch
 While the elapsed time is within a main branch's time slot, that main branch SHALL be the scheduled
-branch: it SHALL be highlighted on the map with a glow in its own branch colour, and the timer SHALL show
+branch: its branch lines, including those of all its subtopics, SHALL slowly and repeatedly grow thicker
+and thinner again on the map, and the timer SHALL show
 its text next to the elapsed time. Only presentation mode SHALL show the highlight.
 
 #### Scenario: Highlight follows the clock
 - **WHEN** the timer passes 3:00 in the map with A (0:00-3:00) and C (3:00-8:00)
-- **THEN** the glow moves from A to C and the timer shows C's text
+- **THEN** the pulsing moves from A's branch to C's branch and the timer shows C's text
 
 #### Scenario: Focused on another branch
 - **WHEN** the presenter is focused on branch D while the elapsed time is in C's slot
@@ -138,4 +139,4 @@ show no branch name, and no main branch SHALL be highlighted.
 
 #### Scenario: Past the total
 - **WHEN** the total is 16 minutes and the timer reaches 16:05
-- **THEN** the timer shows 16:05 in red without a branch name and no branch glows
+- **THEN** the timer shows 16:05 in red without a branch name and no branch pulses

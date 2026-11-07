@@ -1,5 +1,11 @@
 package io.github.wlenaerts.mindmapper.ui.map
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -37,7 +43,8 @@ const val MAX_ZOOM = 4f
 
 /**
  * Draws [map] with pan and pinch zoom. When [onDrop] is given, long-press-and-drag on a topic moves it.
- * [viewport] is in pixels; the caller owns it so it can fit or animate it.
+ * [viewport] is in pixels; the caller owns it so it can fit or animate it. The branch of main topic
+ * [highlightId], subtopics included, slowly grows thicker and thinner again.
  */
 @Composable
 fun MapCanvas(
@@ -66,6 +73,18 @@ fun MapCanvas(
     val currentOnDoubleTap by rememberUpdatedState(onDoubleTap)
     val currentOnDrop by rememberUpdatedState(onDrop)
     val currentOnDragActiveChange by rememberUpdatedState(onDragActiveChange)
+
+    // Only runs while something is highlighted, so other maps do not redraw every frame.
+    val highlightScale = if (highlightId == null) 1f else {
+        val pulse = rememberInfiniteTransition(label = "highlight")
+        val scale by pulse.animateFloat(
+            initialValue = 1f,
+            targetValue = HIGHLIGHT_MAX_SCALE,
+            animationSpec = infiniteRepeatable(tween(HIGHLIGHT_HALF_PERIOD_MS, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label = "highlightScale",
+        )
+        scale
+    }
 
     var draggedId by remember { mutableStateOf<String?>(null) }
     var dragStart by remember { mutableStateOf(Offset.Zero) }
@@ -137,7 +156,7 @@ fun MapCanvas(
             native.save()
             native.translate(viewport.offsetX, viewport.offsetY)
             native.scale(viewport.scale, viewport.scale)
-            renderer.draw(native, map, layout, theme, images, selectedId = selectedId, dropTarget = dropTarget, highlightId = highlightId)
+            renderer.draw(native, map, layout, theme, images, selectedId = selectedId, dropTarget = dropTarget, highlightId = highlightId, highlightScale = highlightScale)
             draggedId?.let { id ->
                 val dx = (dragNow.x - dragStart.x) / viewport.scale
                 val dy = (dragNow.y - dragStart.y) / viewport.scale
@@ -149,6 +168,9 @@ fun MapCanvas(
         }
     }
 }
+
+private const val HIGHLIGHT_MAX_SCALE = 1.8f
+private const val HIGHLIGHT_HALF_PERIOD_MS = 1100
 
 /** The viewport that shows the whole map in a canvas of [width]×[height] pixels. */
 fun fitViewport(layout: MapLayout, width: Float, height: Float, density: Float): Viewport =

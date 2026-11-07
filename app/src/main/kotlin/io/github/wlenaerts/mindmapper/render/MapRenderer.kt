@@ -18,6 +18,7 @@ import io.github.wlenaerts.mindmapper.core.model.CentralShape
 import io.github.wlenaerts.mindmapper.core.model.MindMap
 import io.github.wlenaerts.mindmapper.core.model.Side
 import io.github.wlenaerts.mindmapper.core.model.Topic
+import io.github.wlenaerts.mindmapper.core.model.subtreeIds
 import kotlin.math.hypot
 
 /** Supplies decoded images for topic image paths; null while unavailable. */
@@ -54,15 +55,17 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
         dropTarget: DropTarget? = null,
         hiddenIds: Set<String> = emptySet(),
         highlightId: String? = null,
+        highlightScale: Float = 1f,
     ) {
         val topics = map.topics().associateBy { it.id }
+        // The highlighted main branch and all its subtopics are drawn [highlightScale] times as thick.
+        val highlighted = highlightId?.takeIf { layout[it]?.depth == 1 }?.let { id -> map.find(id)?.let(::subtreeIds) }.orEmpty()
         // Branches first, so topics are drawn on top of them.
         for (box in layout.boxes) {
             if (box.depth == 0 || box.topicId in hiddenIds) continue
             val parent = layout[box.parentId ?: continue] ?: continue
-            drawBranch(canvas, map, parent, box, theme)
+            drawBranch(canvas, map, parent, box, theme, if (box.topicId in highlighted) highlightScale else 1f)
         }
-        highlightId?.let { id -> layout[id]?.takeIf { it.depth == 1 && id !in hiddenIds }?.let { drawHighlight(canvas, it, theme) } }
         for (box in layout.boxes) {
             if (box.topicId in hiddenIds) continue
             val topic = topics[box.topicId] ?: continue
@@ -107,7 +110,7 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
         else -> 2.5f to 1.5f
     }
 
-    private fun drawBranch(canvas: Canvas, map: MindMap, parent: TopicBox, child: TopicBox, theme: MapTheme) {
+    private fun drawBranch(canvas: Canvas, map: MindMap, parent: TopicBox, child: TopicBox, theme: MapTheme, scale: Float) {
         val right = child.side != Side.LEFT
         val (startX, startY) = when {
             parent.depth == 0 -> parent.rect.centerX to parent.rect.centerY
@@ -118,7 +121,7 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
         val inset = if (child.depth == 1) BranchGeometry.mainBoxInset(child.style, child.rect) else 0f
         val endX = if (right) child.rect.left + inset else child.rect.right - inset
         val endY = if (child.depth == 1) child.rect.centerY else child.rect.bottom
-        val (w0, w1) = branchWidths(map, child.depth)
+        val (w0, w1) = branchWidths(map, child.depth).let { (a, b) -> a * scale to b * scale }
         val color = theme.branchColor(child.colorSlot)
         // A main branch starts inside the central topic: it keeps its full width up to the topic's edge and
         // only tapers from there, at the map's taper rate.
@@ -212,17 +215,6 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
                 stroke.color = color
                 canvas.drawPath(BranchGeometry.zigzagUnderline(r.left, r.right, r.bottom, 2.2f + width / 2), stroke)
             }
-        }
-    }
-
-    /** A strong glow in the branch colour around main topic [box], marking the scheduled branch. */
-    private fun drawHighlight(canvas: Canvas, box: TopicBox, theme: MapTheme) {
-        val color = theme.branchColor(box.colorSlot)
-        val count = theme.highlightAlphas.size
-        theme.highlightAlphas.forEachIndexed { i, alpha ->
-            fill.color = withAlpha(color, alpha)
-            val spread = HIGHLIGHT_SPREAD * (count - i) / count
-            canvas.drawRoundRect(box.rect.inset(spread).toRectF(), 12f + spread, 12f + spread, fill)
         }
     }
 
@@ -347,7 +339,6 @@ fun Rect.toRectF(): RectF = RectF(left, top, right, bottom)
 
 private const val SAMPLE_SEED = 7
 private const val GLOW_SPREAD = 5f
-private const val HIGHLIGHT_SPREAD = 16f
 
 /** [color] with its alpha replaced by [alpha] (0 to 1). */
 private fun withAlpha(color: Int, alpha: Float): Int = (color and 0x00FFFFFF) or ((alpha * 255).toInt().coerceIn(0, 255) shl 24)

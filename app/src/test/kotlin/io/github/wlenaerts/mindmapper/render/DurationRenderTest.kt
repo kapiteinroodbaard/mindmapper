@@ -80,36 +80,50 @@ class DurationRenderTest {
         }
     }
 
-    private fun render(map: MindMap, theme: MapTheme, highlightId: String?): Bitmap {
+    private fun render(map: MindMap, theme: MapTheme, highlightId: String?, highlightScale: Float = 1.8f): Bitmap {
         val layout = renderer.layout(map)
         val b = layout.bounds
         val bitmap = Bitmap.createBitmap((b.width + 80).toInt(), (b.height + 80).toInt(), Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(theme.background)
         canvas.translate(40 - b.left, 40 - b.top)
-        renderer.draw(canvas, map, layout, theme, { null }, highlightId = highlightId)
+        renderer.draw(canvas, map, layout, theme, { null }, highlightId = highlightId, highlightScale = highlightScale)
         return bitmap
     }
 
+    private fun sameBitmaps(a: Bitmap, b: Bitmap): Boolean =
+        (0 until a.height).all { y -> (0 until a.width).all { x -> a.getPixel(x, y) == b.getPixel(x, y) } }
+
     @Test
-    fun highlightOnlyChangesPixelsAroundTheMainTopic() {
+    fun highlightThickensOnlyTheHighlightedBranchAndItsSubtopics() {
+        val withSubtopics = timed.copy(root = timed.root.copy(children = timed.root.children.map {
+            it.copy(children = listOf(Topic(id = "${it.id}1", text = "Sub ${it.text}")))
+        }))
         for (theme in listOf(MapTheme.Light, MapTheme.Dark)) {
             for (style in listOf(BranchStyle.STANDARD, BranchStyle.BLURRED)) {
-                val m = timed.copy(root = timed.root.copy(children = timed.root.children.map { it.copy(style = style) }))
+                val m = withSubtopics.copy(root = withSubtopics.root.copy(children = withSubtopics.root.children.map { it.copy(style = style) }))
                 val layout = renderer.layout(m)
                 val plainBitmap = render(m, theme, null)
+                assertTrue("$style unscaled highlight changes nothing", sameBitmaps(plainBitmap, render(m, theme, "c", highlightScale = 1f)))
                 val highlighted = render(m, theme, "c")
-                val box = layout["c"]!!.rect
+                // The main branch starts inside the central topic, so the branch area runs from there.
+                val area = layout.subtreeBounds(m, "c")!!.union(layout["root"]!!.rect)
+                val sub = layout["c1"]!!.rect
                 val dx = 40 - layout.bounds.left
                 val dy = 40 - layout.bounds.top
                 var changedNear = 0
+                var changedAtSubtopic = 0
                 for (y in 0 until plainBitmap.height) for (x in 0 until plainBitmap.width) {
                     if (plainBitmap.getPixel(x, y) == highlighted.getPixel(x, y)) continue
-                    val near = x - dx >= box.left - 20 && x - dx <= box.right + 20 && y - dy >= box.top - 20 && y - dy <= box.bottom + 20
-                    assertTrue("$style pixel ($x, $y) changed away from the highlighted topic", near)
+                    val lx = x - dx
+                    val ly = y - dy
+                    val near = lx >= area.left - 20 && lx <= area.right + 20 && ly >= area.top - 20 && ly <= area.bottom + 20
+                    assertTrue("$style pixel ($x, $y) changed away from the highlighted branch", near)
                     changedNear++
+                    if (lx >= sub.left && lx <= sub.right && ly >= sub.bottom - 10 && ly <= sub.bottom + 10) changedAtSubtopic++
                 }
                 assertTrue("$style highlight is visible", changedNear > 100)
+                assertTrue("$style subtopic underline thickens too", changedAtSubtopic > 10)
             }
         }
     }
