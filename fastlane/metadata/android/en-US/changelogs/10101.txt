@@ -1,0 +1,1 @@
+The branch you should be at in presentation mode now gently pulses thicker and thinner instead of glowing.
