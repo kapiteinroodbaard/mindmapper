@@ -9,7 +9,11 @@ import io.github.wlenaerts.mindmapper.core.edit.resolveDrop
 import io.github.wlenaerts.mindmapper.core.format.MindMapArchive
 import io.github.wlenaerts.mindmapper.R
 import io.github.wlenaerts.mindmapper.core.format.MindMapDocument
+import io.github.wlenaerts.mindmapper.core.model.BranchColorScheme
 import io.github.wlenaerts.mindmapper.core.model.BranchStyle
+import io.github.wlenaerts.mindmapper.core.model.TopicImage
+import io.github.wlenaerts.mindmapper.document.ImageImporter
+import android.graphics.Bitmap
 import io.github.wlenaerts.mindmapper.core.model.CentralShape
 import io.github.wlenaerts.mindmapper.core.model.Side
 import io.github.wlenaerts.mindmapper.core.model.newMindMap
@@ -107,6 +111,85 @@ class EditorViewModelTest {
     }
 
     @Test
+    fun textColourIsPartOfTheTextEdit() {
+        val vm = newEditor()
+        vm.addChild()
+        val id = vm.state.value.selectedId!!
+        val format = vm.textFormat(id)!!
+        vm.setTextAndFormat(id, "Intro", format, BLUE)
+        assertEquals(BLUE, vm.state.value.map!!.find(id)!!.textColor)
+        vm.setTextAndFormat(id, "Intro", format, null)
+        assertNull(vm.state.value.map!!.find(id)!!.textColor)
+        vm.undo()
+        assertEquals(BLUE, vm.state.value.map!!.find(id)!!.textColor)
+        // Without a colour argument the current colour is kept.
+        vm.setTextAndFormat(id, "Intro 2", format)
+        assertEquals(BLUE, vm.state.value.map!!.find(id)!!.textColor)
+    }
+
+    @Test
+    fun branchColourSchemeAndBackgroundAreUndoable() {
+        val vm = newEditor()
+        vm.addChild()
+        val main = vm.state.value.selectedId!!
+        vm.setBranchColor(main, BLUE)
+        assertEquals(BLUE, vm.state.value.map!!.find(main)!!.branchColor)
+        vm.setBranchColorScheme(BranchColorScheme.SHADES)
+        vm.setBackground(BLUE)
+        assertEquals(BLUE, vm.state.value.map!!.background)
+        vm.undo()
+        assertNull(vm.state.value.map!!.background)
+        vm.undo()
+        assertEquals(BranchColorScheme.PALETTE, vm.state.value.map!!.branchColors)
+        vm.undo()
+        assertNull(vm.state.value.map!!.find(main)!!.branchColor)
+    }
+
+    @Test
+    fun imageResizeIsOneUndoStep() {
+        val vm = newEditor()
+        vm.addChild()
+        val id = vm.state.value.selectedId!!
+        val imported = ImageImporter.fromBitmap(Bitmap.createBitmap(40, 20, Bitmap.Config.ARGB_8888))
+        vm.attachImage(id, imported)
+        val before = vm.state.value.map!!.find(id)!!.image!!.width
+        val height = vm.state.value.layout!![id]!!.rect.height
+        vm.previewImageWidth(id, 200f)
+        vm.previewImageWidth(id, 260f)
+        assertEquals(260f, vm.state.value.map!!.find(id)!!.image!!.width)
+        assertTrue(vm.state.value.layout!![id]!!.rect.height > height)
+        vm.previewImageWidth(id, 1000f)
+        assertEquals(TopicImage.MAX_WIDTH, vm.state.value.map!!.find(id)!!.image!!.width)
+        vm.commitImageWidth()
+        vm.undo()
+        assertEquals(before, vm.state.value.map!!.find(id)!!.image!!.width)
+        vm.removeImage(id)
+        assertNull(vm.state.value.map!!.find(id)!!.image)
+        vm.undo()
+        assertEquals(before, vm.state.value.map!!.find(id)!!.image!!.width)
+    }
+
+    @Test
+    fun backgroundImageIsSavedInTheContainer() {
+        val vm = newEditor()
+        val imported = ImageImporter.fromBitmap(Bitmap.createBitmap(40, 20, Bitmap.Config.ARGB_8888))
+        vm.setBackgroundImage(imported.path, imported.bytes)
+        assertEquals(imported.path, vm.state.value.map!!.backgroundImage)
+        val file = File(app.cacheDir, "background.mindmap")
+        var result: Boolean? = null
+        vm.saveAs(Uri.fromFile(file)) { result = it }
+        repeat(50) { if (result == null) { shadowOf(Looper.getMainLooper()).idle(); Thread.sleep(20) } }
+        assertEquals(true, result)
+        val read = file.inputStream().use { MindMapArchive.read(it) }
+        assertEquals(imported.path, read.map.backgroundImage)
+        assertTrue(read.images.getValue(imported.path).isNotEmpty())
+        vm.removeBackgroundImage()
+        assertNull(vm.state.value.map!!.backgroundImage)
+        vm.undo()
+        assertEquals(imported.path, vm.state.value.map!!.backgroundImage)
+    }
+
+    @Test
     fun saveAsWritesValidFileAndClearsDirty() {
         val vm = newEditor()
         vm.setCentralShape(CentralShape.DIAMOND)
@@ -197,3 +280,5 @@ class EditorViewModelTest {
         assertTrue(file.exists())
     }
 }
+
+private val BLUE = 0xFF0077B6.toInt()

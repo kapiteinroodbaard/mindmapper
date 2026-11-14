@@ -11,8 +11,9 @@ import kotlin.math.abs
 
 /**
  * The placed box of one topic, in layout units. [side] is null for the central topic, [colorSlot] is the
- * palette slot of the main branch the topic belongs to (-1 for the central topic) and [style] that branch's
- * style (standard for the central topic).
+ * palette slot of the main branch the topic belongs to (-1 for the central topic), [clockwise] that main
+ * branch's position in clockwise order (-1 for the central topic) and [style] that branch's style
+ * (standard for the central topic).
  */
 data class TopicBox(
     val topicId: String,
@@ -22,6 +23,7 @@ data class TopicBox(
     val side: Side?,
     val colorSlot: Int,
     val style: BranchStyle = BranchStyle.STANDARD,
+    val clockwise: Int = -1,
 )
 
 /**
@@ -32,6 +34,9 @@ class MapLayout(val boxes: List<TopicBox>, val showsDurations: Boolean = false) 
     private val byId = boxes.associateBy { it.topicId }
 
     val bounds: Rect = boxes.map { it.rect }.reduce(Rect::union)
+
+    /** Number of main branches. */
+    val mainBranchCount: Int = boxes.count { it.depth == 1 }
 
     operator fun get(topicId: String): TopicBox? = byId[topicId]
 
@@ -85,6 +90,7 @@ object MapLayouter {
             val clockwise = right + left
             val slots = colorSlots(clockwise.size, cyclic = map.layout == LayoutKind.RADIAL)
             val slotOf = clockwise.withIndex().associate { (position, index) -> index to slots[position] }
+            val positionOf = clockwise.withIndex().associate { (position, index) -> index to position }
 
             val rootSize = sizes.getValue(map.root.id)
             val rootRect = Rect(-rootSize.width / 2, -rootSize.height / 2, rootSize.width / 2, rootSize.height / 2)
@@ -92,10 +98,10 @@ object MapLayouter {
 
             // The left side is filled bottom to top (clockwise), so on screen it reads in reverse order.
             stack(right, 0f) { index, center ->
-                place(mains[index], map.root.id, 1, Side.RIGHT, rootRect.right + horizontalGap(1), center, slotOf.getValue(index), mains[index].styleOrStandard)
+                place(mains[index], map.root.id, 1, Side.RIGHT, rootRect.right + horizontalGap(1), center, slotOf.getValue(index), mains[index].styleOrStandard, positionOf.getValue(index))
             }
             stack(left.reversed(), 0f) { index, center ->
-                place(mains[index], map.root.id, 1, Side.LEFT, rootRect.left - horizontalGap(1), center, slotOf.getValue(index), mains[index].styleOrStandard)
+                place(mains[index], map.root.id, 1, Side.LEFT, rootRect.left - horizontalGap(1), center, slotOf.getValue(index), mains[index].styleOrStandard, positionOf.getValue(index))
             }
 
             // Keep depth-first order (matching the model) so parents are drawn before their children.
@@ -120,14 +126,14 @@ object MapLayouter {
             }
         }
 
-        private fun place(topic: Topic, parentId: String, depth: Int, side: Side, anchorX: Float, centerY: Float, slot: Int, style: BranchStyle) {
+        private fun place(topic: Topic, parentId: String, depth: Int, side: Side, anchorX: Float, centerY: Float, slot: Int, style: BranchStyle, clockwise: Int) {
             val size = sizes.getValue(topic.id)
             val x = if (side == Side.RIGHT) anchorX else anchorX - size.width
             val rect = Rect(x, centerY - size.height / 2, x + size.width, centerY + size.height / 2)
-            boxes += TopicBox(topic.id, parentId, rect, depth, side, slot, style)
+            boxes += TopicBox(topic.id, parentId, rect, depth, side, slot, style, clockwise)
             val childAnchor = if (side == Side.RIGHT) rect.right + horizontalGap(depth + 1) else rect.left - horizontalGap(depth + 1)
             stack(topic.children.indices.toList(), centerY, depth + 1, topic.children) { index, center ->
-                place(topic.children[index], topic.id, depth + 1, side, childAnchor, center, slot, style)
+                place(topic.children[index], topic.id, depth + 1, side, childAnchor, center, slot, style, clockwise)
             }
         }
 

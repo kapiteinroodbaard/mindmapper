@@ -6,19 +6,22 @@ on a tablet. No ads, no tracking, no account and no internet access.
 ## Features
 
 - Central topic in seven shapes with a colour selector
-- Tapered branches (thick at the centre, thinner per level) with automatic colours per main branch;
-  adjustable trunk width and taper
+- Tapered branches (thick at the centre, thinner per level) with automatic colours per main branch,
+  from a palette or as shades of the central colour; a custom colour per main branch; adjustable trunk
+  width and taper
 - A style per main branch: standard, blurred, plant (leaves and tendrils), lightning or straight; the
   style shapes the branch, the main topic's box and all of its subtopics
 - Topic actions right on the map: "+" handles to add subtopics and topics, and an action bar on the
   selected topic
-- Bold, italic and underlined topic text
+- Bold, italic, underlined and coloured topic text
 - Automatic layout around the central topic (balanced, clockwise) or to the right of it
-- Text, an image (embedded, resizable) and an icon per topic
+- Text, an image and an icon per topic, including numbered icons 0 to 9; resize an image by dragging
+  its corners and remove it with the button on the image
+- A background colour and/or background image per map; without one the map follows light and dark mode
 - Drag to reorder, move to the other side or attach to another topic; undo/redo
 - Presentation mode: full screen, tap a branch to zoom in, back to the overview
 - Presentation timing: plan a duration per main branch (the central topic shows the total); while
-  presenting, a count-up timer makes the branch you should be at glow
+  presenting, a count-up timer makes the branch you should be at pulse
 - Office-style files: open and save `.mindmap` files anywhere, rename them from the editor, autosave,
   recent files with thumbnails
 - Export to PDF (one page) and PNG, save or share
@@ -30,7 +33,7 @@ A `.mindmap` file is a ZIP archive:
 
 ```
 map.json        the mind map (with "formatVersion"), readable JSON
-images/*.webp   embedded images, downscaled to at most 1600 px
+images/*.webp   embedded topic and background images, downscaled to at most 1600 px
 thumbnail.png   preview used by the recent-files list
 ```
 

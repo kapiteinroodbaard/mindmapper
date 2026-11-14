@@ -1,10 +1,12 @@
 package io.github.wlenaerts.mindmapper.core.format
 
+import io.github.wlenaerts.mindmapper.core.model.BranchColorScheme
 import io.github.wlenaerts.mindmapper.core.model.BranchStyle
 import io.github.wlenaerts.mindmapper.core.model.CentralShape
 import io.github.wlenaerts.mindmapper.core.model.HexColorSerializer
 import io.github.wlenaerts.mindmapper.core.model.LayoutKind
 import io.github.wlenaerts.mindmapper.core.model.MindMap
+import io.github.wlenaerts.mindmapper.core.model.NullableHexColorSerializer
 import io.github.wlenaerts.mindmapper.core.model.Topic
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
@@ -67,12 +69,18 @@ object MindMapArchive {
         val centralColor: Int = MindMap.DEFAULT_CENTRAL_COLOR,
         val trunkWidth: Float = MindMap.DEFAULT_TRUNK_WIDTH,
         val trunkTaper: Float = MindMap.DEFAULT_TRUNK_TAPER,
+        val branchColors: BranchColorScheme? = null,
+        @Serializable(with = NullableHexColorSerializer::class)
+        val background: Int? = null,
+        val backgroundImage: String? = null,
         val root: Topic,
     )
 
     fun encodeMap(map: MindMap): String =
         json.encodeToString(MapFile.serializer(), MapFile(
-            FORMAT_VERSION, map.layout, map.centralShape, map.centralColor, map.trunkWidth, map.trunkTaper, map.root,
+            FORMAT_VERSION, map.layout, map.centralShape, map.centralColor, map.trunkWidth, map.trunkTaper,
+            // The palette is the default scheme and is left out of the file.
+            map.branchColors.takeIf { it != BranchColorScheme.PALETTE }, map.background, map.backgroundImage, map.root,
         ))
 
     fun decodeMap(text: String): MindMap {
@@ -95,27 +103,33 @@ object MindMapArchive {
             throw MindMapFormatException.Damaged(e)
         }
         return MindMap(
-            file.layout,
-            file.centralShape,
-            file.centralColor,
-            file.trunkWidth.coerceIn(MindMap.MIN_TRUNK_WIDTH, MindMap.MAX_TRUNK_WIDTH),
-            file.trunkTaper.coerceIn(MindMap.MIN_TRUNK_TAPER, MindMap.MAX_TRUNK_TAPER),
-            normalizeMainBranchFields(file.root),
+            layout = file.layout,
+            centralShape = file.centralShape,
+            centralColor = file.centralColor,
+            trunkWidth = file.trunkWidth.coerceIn(MindMap.MIN_TRUNK_WIDTH, MindMap.MAX_TRUNK_WIDTH),
+            trunkTaper = file.trunkTaper.coerceIn(MindMap.MIN_TRUNK_TAPER, MindMap.MAX_TRUNK_TAPER),
+            branchColors = file.branchColors ?: BranchColorScheme.PALETTE,
+            background = file.background,
+            backgroundImage = file.backgroundImage,
+            root = normalizeMainBranchFields(file.root),
         )
     }
 
     /**
-     * Keeps branch styles and durations only on main branches, stores standard as no style and drops
-     * durations that are not positive.
+     * Keeps branch styles, branch colours and durations only on main branches, stores standard as no style
+     * and drops durations that are not positive.
      */
     private fun normalizeMainBranchFields(root: Topic): Topic {
-        fun clear(topic: Topic): Topic = topic.copy(style = null, durationSeconds = null, children = topic.children.map(::clear))
+        fun clear(topic: Topic): Topic =
+            topic.copy(style = null, branchColor = null, durationSeconds = null, children = topic.children.map(::clear))
         return root.copy(
             style = null,
+            branchColor = null,
             durationSeconds = null,
             children = root.children.map { main ->
                 clear(main).copy(
                     style = main.style?.takeIf { it != BranchStyle.STANDARD },
+                    branchColor = main.branchColor,
                     durationSeconds = main.durationSeconds?.takeIf { it > 0 },
                 )
             },

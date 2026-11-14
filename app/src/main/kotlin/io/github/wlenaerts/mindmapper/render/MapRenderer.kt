@@ -13,6 +13,8 @@ import io.github.wlenaerts.mindmapper.core.layout.MapLayout
 import io.github.wlenaerts.mindmapper.core.layout.MapLayouter
 import io.github.wlenaerts.mindmapper.core.layout.Rect
 import io.github.wlenaerts.mindmapper.core.layout.TopicBox
+import io.github.wlenaerts.mindmapper.core.layout.BranchShades
+import io.github.wlenaerts.mindmapper.core.model.BranchColorScheme
 import io.github.wlenaerts.mindmapper.core.model.BranchStyle
 import io.github.wlenaerts.mindmapper.core.model.CentralShape
 import io.github.wlenaerts.mindmapper.core.model.MindMap
@@ -58,18 +60,19 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
         highlightScale: Float = 1f,
     ) {
         val topics = map.topics().associateBy { it.id }
+        val colors = branchColors(map, layout, theme)
         // The highlighted main branch and all its subtopics are drawn [highlightScale] times as thick.
         val highlighted = highlightId?.takeIf { layout[it]?.depth == 1 }?.let { id -> map.find(id)?.let(::subtreeIds) }.orEmpty()
         // Branches first, so topics are drawn on top of them.
         for (box in layout.boxes) {
             if (box.depth == 0 || box.topicId in hiddenIds) continue
             val parent = layout[box.parentId ?: continue] ?: continue
-            drawBranch(canvas, map, parent, box, theme, if (box.topicId in highlighted) highlightScale else 1f)
+            drawBranch(canvas, map, parent, box, colors.getValue(box.topicId), theme, if (box.topicId in highlighted) highlightScale else 1f)
         }
         for (box in layout.boxes) {
             if (box.topicId in hiddenIds) continue
             val topic = topics[box.topicId] ?: continue
-            drawTopic(canvas, map, topic, box, theme, images, layout.showsDurations, if (box.topicId in highlighted) highlightScale else 1f)
+            drawTopic(canvas, map, topic, box, colors[box.topicId], theme, images, layout.showsDurations, if (box.topicId in highlighted) highlightScale else 1f)
         }
         selectedId?.let { id -> layout[id]?.let { drawSelection(canvas, it.rect, theme.selection) } }
         dropTarget?.let { target -> layout[target.anchorId]?.let { drawDropIndicator(canvas, it, target, theme.dropIndicator) } }
@@ -81,8 +84,9 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
         val topic = map.find(topicId) ?: return
         canvas.save()
         canvas.translate(dx, dy)
-        if (box.depth >= 2) drawUnderline(canvas, box, theme.branchColor(box.colorSlot), branchWidths(map, box.depth).second, theme)
-        drawTopic(canvas, map, topic, box, theme, images, layout.showsDurations)
+        val color = if (box.depth >= 1) branchColor(map, layout, theme, topicId) else null
+        if (box.depth >= 2) drawUnderline(canvas, box, color!!, branchWidths(map, box.depth).second, theme)
+        drawTopic(canvas, map, topic, box, color, theme, images, layout.showsDurations)
         canvas.restore()
     }
 
@@ -104,6 +108,79 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
         drawMainBox(canvas, style, box, color, theme)
     }
 
+    /**
+     * The branch colour of every topic but the central one: a main branch's own colour, else its colour in
+     * the map's scheme; subtopics take their main branch's colour.
+     */
+    fun branchColors(map: MindMap, layout: MapLayout, theme: MapTheme): Map<String, Int> {
+        val topics = map.root.children.associateBy { it.id }
+        val colors = HashMap<String, Int>()
+        // Boxes are in depth-first order, so a parent's colour is known before its children's.
+        for (box in layout.boxes) {
+            when {
+                box.depth == 0 -> Unit
+                box.depth == 1 -> colors[box.topicId] = topics[box.topicId]?.branchColor ?: schemeColor(map, layout, theme, box)
+                else -> colors[box.topicId] = colors[box.parentId] ?: schemeColor(map, layout, theme, box)
+            }
+        }
+        return colors
+    }
+
+    /** The branch colour of topic [topicId]; the central topic has none and gets its own colour. */
+    fun branchColor(map: MindMap, layout: MapLayout, theme: MapTheme, topicId: String): Int =
+        branchColors(map, layout, theme)[topicId] ?: map.centralColor
+
+    private fun schemeColor(map: MindMap, layout: MapLayout, theme: MapTheme, box: TopicBox): Int = when (map.branchColors) {
+        BranchColorScheme.PALETTE -> theme.branchColor(box.colorSlot)
+        BranchColorScheme.SHADES -> BranchShades.shade(map.centralColor, box.clockwise, layout.mainBranchCount)
+    }
+
+    /**
+     * Fills a [width] by [height] area (in the canvas's current units) with the map's background: [theme]'s
+     * background colour, then the background image scaled to cover the area, centred and cropped.
+     */
+    fun drawBackground(canvas: Canvas, map: MindMap, theme: MapTheme, images: ImageSource, width: Float, height: Float) {
+        // Only the area itself: the canvas may draw beyond it (on screen, under the system bars).
+        fill.color = theme.background
+        canvas.drawRect(0f, 0f, width, height, fill)
+        val bitmap = map.backgroundImage?.let(images::bitmap) ?: return
+        val scale = maxOf(width / bitmap.width, height / bitmap.height)
+        val w = bitmap.width * scale
+        val h = bitmap.height * scale
+        val dst = RectF((width - w) / 2, (height - h) / 2, (width + w) / 2, (height + h) / 2)
+        canvas.save()
+        canvas.clipRect(0f, 0f, width, height)
+        canvas.drawBitmap(bitmap, null, dst, bitmapPaint)
+        canvas.restore()
+    }
+
+    private val luminances = HashMap<String, Float>()
+
+    /** Average relative luminance of the map's background image, or null while it has none or it is unavailable. */
+    fun backgroundLuminance(map: MindMap, images: ImageSource): Float? {
+        val path = map.backgroundImage ?: return null
+        luminances[path]?.let { return it }
+        val bitmap = images.bitmap(path) ?: return null
+        val pixel = Bitmap.createScaledBitmap(bitmap, 1, 1, true).let { one -> one.getPixel(0, 0).also { if (one !== bitmap) one.recycle() } }
+        return relativeLuminance(pixel).also { luminances[path] = it }
+    }
+
+    /** The appearance of [map]: see [MapTheme.forMap]. */
+    fun theme(map: MindMap, systemDark: Boolean, images: ImageSource): MapTheme =
+        MapTheme.forMap(map, systemDark, backgroundLuminance(map, images))
+
+    /** Where topic [topicId]'s image is drawn, in layout units, or null when it has none. */
+    fun imageRect(map: MindMap, layout: MapLayout, topicId: String): Rect? {
+        val box = layout[topicId] ?: return null
+        val topic = map.find(topicId) ?: return null
+        val image = topic.image ?: return null
+        val duration = if (layout.showsDurations) metrics.shownDurationSeconds(map, topic, box.depth) else null
+        val c = metrics.content(topic, box.depth, duration)
+        val left = box.rect.centerX - c.contentWidth / 2 + c.imageX
+        val top = box.rect.centerY - c.contentHeight / 2 + c.imageY
+        return Rect(left, top, left + image.width, top + image.height)
+    }
+
     /** Start and end width of the branch leading to a topic at [depth]; main branches follow the map's trunk width. */
     private fun branchWidths(map: MindMap, depth: Int): Pair<Float, Float> = when (depth) {
         1 -> map.trunkWidth to 5f
@@ -111,7 +188,7 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
         else -> 2.5f to 1.5f
     }
 
-    private fun drawBranch(canvas: Canvas, map: MindMap, parent: TopicBox, child: TopicBox, theme: MapTheme, scale: Float) {
+    private fun drawBranch(canvas: Canvas, map: MindMap, parent: TopicBox, child: TopicBox, color: Int, theme: MapTheme, scale: Float) {
         val right = child.side != Side.LEFT
         val (w0, w1) = branchWidths(map, child.depth)
         // Branches start and end just inside a main topic's box, deep enough that the box covers their flat ends.
@@ -126,7 +203,6 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
         val inset = if (child.depth == 1) BranchGeometry.mainBoxJoin(child.style, child.rect, w1 * scale / 2) else 0f
         val endX = if (right) child.rect.left + inset else child.rect.right - inset
         val endY = if (child.depth == 1) child.rect.centerY else child.rect.bottom
-        val color = theme.branchColor(child.colorSlot)
         // A main branch starts inside the central topic: it keeps its full width up to the topic's edge and
         // only tapers from there, at the map's taper rate.
         val main = child.depth == 1
@@ -252,6 +328,7 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
         map: MindMap,
         topic: Topic,
         box: TopicBox,
+        branchColor: Int?,
         theme: MapTheme,
         images: ImageSource,
         showDurations: Boolean,
@@ -263,14 +340,14 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
             0 -> {
                 fill.color = map.centralColor
                 canvas.drawPath(centralShapePath(map.centralShape, r), fill)
-                textColor = contrastingTextColor(map.centralColor)
+                textColor = topic.textColor ?: contrastingTextColor(map.centralColor)
             }
             1 -> {
-                val color = theme.branchColor(box.colorSlot)
+                val color = branchColor!!
                 drawMainBox(canvas, box.style, r, color, theme, scale)
-                textColor = contrastingTextColor(color)
+                textColor = topic.textColor ?: contrastingTextColor(color)
             }
-            else -> textColor = theme.text
+            else -> textColor = topic.textColor ?: theme.text
         }
         val duration = if (showDurations) metrics.shownDurationSeconds(map, topic, box.depth) else null
         val c = metrics.content(topic, box.depth, duration)

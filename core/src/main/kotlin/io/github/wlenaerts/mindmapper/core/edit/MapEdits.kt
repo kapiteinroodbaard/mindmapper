@@ -1,5 +1,6 @@
 package io.github.wlenaerts.mindmapper.core.edit
 
+import io.github.wlenaerts.mindmapper.core.model.BranchColorScheme
 import io.github.wlenaerts.mindmapper.core.model.BranchStyle
 import io.github.wlenaerts.mindmapper.core.model.CentralShape
 import io.github.wlenaerts.mindmapper.core.model.LayoutKind
@@ -48,6 +49,23 @@ fun MindMap.setTrunk(width: Float, taper: Float): MindMap = copy(
 fun MindMap.setCentralShape(shape: CentralShape): MindMap = copy(centralShape = shape)
 
 fun MindMap.setCentralColor(color: Int): MindMap = copy(centralColor = color)
+
+/** Sets the text colour of topic [id]; null means the automatic colour. */
+fun MindMap.setTextColor(id: String, color: Int?): MindMap = updateTopic(id) { it.copy(textColor = color) }
+
+/** Sets the custom colour of main branch [id]; null means automatic. Other topics have no branch colour of their own. */
+fun MindMap.setBranchColor(id: String, color: Int?): MindMap {
+    if (root.children.none { it.id == id }) return this
+    return updateTopic(id) { it.copy(branchColor = color) }
+}
+
+fun MindMap.setBranchColorScheme(scheme: BranchColorScheme): MindMap = copy(branchColors = scheme)
+
+/** Sets the map's background colour; null lets the background follow the app theme (unless an image is set). */
+fun MindMap.setBackground(color: Int?): MindMap = copy(background = color)
+
+/** Sets the map's background image entry path; null removes it. */
+fun MindMap.setBackgroundImage(path: String?): MindMap = copy(backgroundImage = path)
 
 /** Sets the style of main branch [id]; standard is stored as null. Other topics have no style of their own. */
 fun MindMap.setBranchStyle(id: String, style: BranchStyle): MindMap {
@@ -99,7 +117,7 @@ private fun MindMap.insert(parentId: String, index: Int, topic: Topic): MindMap 
 /**
  * Moves topic [id] with its subtree to position [index] among the children of [parentId] (index as seen
  * before the move). Under the central topic the branch gets [side] (null keeps its current side); elsewhere
- * the side, branch style and duration are cleared. Moving the central topic, or into the topic's own subtree, is rejected.
+ * the side, branch style, branch colour and duration are cleared. Moving the central topic, or into the topic's own subtree, is rejected.
  */
 fun MindMap.move(id: String, parentId: String, index: Int, side: Side? = null): MindMap {
     if (id == root.id || isInSubtree(id, parentId)) return this
@@ -108,7 +126,7 @@ fun MindMap.move(id: String, parentId: String, index: Int, side: Side? = null): 
     if (find(parentId) == null) return this
     val oldIndex = oldParent.children.indexOfFirst { it.id == id }
     val target = if (oldParent.id == parentId && oldIndex < index) index - 1 else index
-    val moved = if (parentId == root.id) topic.copy(side = side ?: topic.side) else topic.copy(side = null, style = null, durationSeconds = null)
+    val moved = if (parentId == root.id) topic.copy(side = side ?: topic.side) else topic.copy(side = null, style = null, branchColor = null, durationSeconds = null)
     val removed = copy(root = removeFrom(root, id))
     return removed.insert(parentId, target, moved)
 }

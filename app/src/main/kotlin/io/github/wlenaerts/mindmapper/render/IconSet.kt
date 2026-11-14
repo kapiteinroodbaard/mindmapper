@@ -8,6 +8,17 @@ import io.github.wlenaerts.mindmapper.R
  */
 object IconSet {
     val icons: Map<String, Int> = linkedMapOf(
+        // Numbered circles first, so numbering topics is quick.
+        "counter_0" to R.drawable.mm_icon_counter_0,
+        "counter_1" to R.drawable.mm_icon_counter_1,
+        "counter_2" to R.drawable.mm_icon_counter_2,
+        "counter_3" to R.drawable.mm_icon_counter_3,
+        "counter_4" to R.drawable.mm_icon_counter_4,
+        "counter_5" to R.drawable.mm_icon_counter_5,
+        "counter_6" to R.drawable.mm_icon_counter_6,
+        "counter_7" to R.drawable.mm_icon_counter_7,
+        "counter_8" to R.drawable.mm_icon_counter_8,
+        "counter_9" to R.drawable.mm_icon_counter_9,
         "check" to R.drawable.mm_icon_check,
         "close" to R.drawable.mm_icon_close,
         "star" to R.drawable.mm_icon_star,

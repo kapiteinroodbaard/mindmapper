@@ -5,6 +5,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.descriptors.PrimitiveKind
 import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.nullable
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import java.util.UUID
@@ -51,6 +52,28 @@ object BranchStyleSerializer : KSerializer<BranchStyle> {
     }
 }
 
+/** How main branches without a colour of their own are coloured. A map without a scheme uses [PALETTE]. */
+@Serializable(with = BranchColorSchemeSerializer::class)
+enum class BranchColorScheme(val serialName: String) {
+    /** Fixed palette colours, neighbours contrasting. */
+    PALETTE("palette"),
+
+    /** Shades of the central topic's colour, light to dark clockwise. */
+    SHADES("shades"),
+}
+
+/** Reads unknown scheme names (from a newer app version) as [BranchColorScheme.PALETTE] instead of failing. */
+object BranchColorSchemeSerializer : KSerializer<BranchColorScheme> {
+    override val descriptor = PrimitiveSerialDescriptor("BranchColorScheme", PrimitiveKind.STRING)
+
+    override fun serialize(encoder: Encoder, value: BranchColorScheme) = encoder.encodeString(value.serialName)
+
+    override fun deserialize(decoder: Decoder): BranchColorScheme {
+        val name = decoder.decodeString()
+        return BranchColorScheme.entries.firstOrNull { it.serialName == name } ?: BranchColorScheme.PALETTE
+    }
+}
+
 @Serializable
 enum class Side {
     @SerialName("left") LEFT,
@@ -73,9 +96,10 @@ data class TopicImage(val path: String, val width: Float, val aspect: Float) {
 }
 
 /**
- * A topic in the tree. [side], [style] and [durationSeconds] are only meaningful for main branches
- * (children of the central topic); [style] null means [BranchStyle.STANDARD] and [durationSeconds] null
- * means the branch has no planned duration.
+ * A topic in the tree. [side], [style], [branchColor] and [durationSeconds] are only meaningful for main
+ * branches (children of the central topic); [style] null means [BranchStyle.STANDARD], [branchColor] null
+ * means the automatic colour and [durationSeconds] null means the branch has no planned duration.
+ * [textColor] null means the automatic text colour.
  * [bold] null means the default for the topic's level (bold for the central topic and main branches);
  * [italic] and [underline] are null when off, so they are left out of the file.
  */
@@ -86,15 +110,23 @@ data class Topic(
     val bold: Boolean? = null,
     val italic: Boolean? = null,
     val underline: Boolean? = null,
+    @Serializable(with = NullableHexColorSerializer::class)
+    val textColor: Int? = null,
     val icon: String? = null,
     val image: TopicImage? = null,
     val side: Side? = null,
     val style: BranchStyle? = null,
+    @Serializable(with = NullableHexColorSerializer::class)
+    val branchColor: Int? = null,
     val durationSeconds: Int? = null,
     val children: List<Topic> = emptyList(),
 )
 
-/** A whole mind map. Immutable: every edit produces a new instance. */
+/**
+ * A whole mind map. Immutable: every edit produces a new instance. [background] and [backgroundImage]
+ * (an image entry path) are the map's own background; while both are null the background follows the
+ * app theme.
+ */
 @Serializable
 data class MindMap(
     val layout: LayoutKind = LayoutKind.RADIAL,
@@ -105,8 +137,15 @@ data class MindMap(
     val trunkWidth: Float = DEFAULT_TRUNK_WIDTH,
     /** How quickly main branches thin out: 1 is even, higher values thin out sooner. */
     val trunkTaper: Float = DEFAULT_TRUNK_TAPER,
+    val branchColors: BranchColorScheme = BranchColorScheme.PALETTE,
+    @Serializable(with = NullableHexColorSerializer::class)
+    val background: Int? = null,
+    val backgroundImage: String? = null,
     val root: Topic,
 ) {
+    /** Whether the map has a background of its own instead of following the app theme. */
+    val hasOwnBackground: Boolean get() = background != null || backgroundImage != null
+
     /** Every topic in depth-first order, starting with the central topic. */
     fun topics(): Sequence<Topic> = sequence {
         suspend fun SequenceScope<Topic>.visit(topic: Topic) {
@@ -138,7 +177,8 @@ data class MindMap(
     fun isInSubtree(ancestor: String, candidate: String): Boolean =
         find(ancestor)?.let { start -> subtreeIds(start).contains(candidate) } ?: false
 
-    fun imagePaths(): Set<String> = topics().mapNotNull { it.image?.path }.toSet()
+    /** Every embedded image the map uses: topic images and the background image. */
+    fun imagePaths(): Set<String> = (topics().mapNotNull { it.image?.path } + listOfNotNull(backgroundImage)).toSet()
 
     companion object {
         const val DEFAULT_CENTRAL_COLOR: Int = 0xFF3D5A80.toInt()
@@ -182,4 +222,19 @@ object HexColorSerializer : KSerializer<Int> {
         require(text.length == 6) { "Colour '$text' must be #RRGGBB" }
         return (0xFF000000.toInt()) or text.toInt(16)
     }
+}
+
+/** [HexColorSerializer] for optional colours; null is left out of the file. */
+object NullableHexColorSerializer : KSerializer<Int?> {
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    override val descriptor = PrimitiveSerialDescriptor("NullableHexColor", PrimitiveKind.STRING).nullable
+
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    override fun serialize(encoder: Encoder, value: Int?) {
+        if (value == null) encoder.encodeNull() else HexColorSerializer.serialize(encoder, value)
+    }
+
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    override fun deserialize(decoder: Decoder): Int? =
+        if (decoder.decodeNotNullMark()) HexColorSerializer.deserialize(decoder) else decoder.decodeNull()
 }

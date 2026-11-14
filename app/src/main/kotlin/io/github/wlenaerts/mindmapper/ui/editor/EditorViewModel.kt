@@ -18,6 +18,11 @@ import io.github.wlenaerts.mindmapper.core.edit.setBranchStyle
 import io.github.wlenaerts.mindmapper.core.edit.setDuration
 import io.github.wlenaerts.mindmapper.core.edit.setCentralShape
 import io.github.wlenaerts.mindmapper.core.edit.setIcon
+import io.github.wlenaerts.mindmapper.core.edit.setBackground
+import io.github.wlenaerts.mindmapper.core.edit.setBackgroundImage
+import io.github.wlenaerts.mindmapper.core.edit.setBranchColor
+import io.github.wlenaerts.mindmapper.core.edit.setBranchColorScheme
+import io.github.wlenaerts.mindmapper.core.edit.setTextColor
 import io.github.wlenaerts.mindmapper.core.edit.setImage
 import io.github.wlenaerts.mindmapper.core.edit.setImageWidth
 import io.github.wlenaerts.mindmapper.core.edit.setLayout
@@ -26,15 +31,18 @@ import io.github.wlenaerts.mindmapper.core.edit.setTextFormat
 import io.github.wlenaerts.mindmapper.core.edit.setTrunk
 import io.github.wlenaerts.mindmapper.core.format.MindMapDocument
 import io.github.wlenaerts.mindmapper.core.layout.MapLayout
+import io.github.wlenaerts.mindmapper.core.model.BranchColorScheme
 import io.github.wlenaerts.mindmapper.core.model.BranchStyle
 import io.github.wlenaerts.mindmapper.core.model.CentralShape
 import io.github.wlenaerts.mindmapper.core.model.LayoutKind
 import io.github.wlenaerts.mindmapper.core.model.MindMap
 import io.github.wlenaerts.mindmapper.core.model.Side
 import io.github.wlenaerts.mindmapper.core.model.Topic
+import io.github.wlenaerts.mindmapper.core.model.TopicImage
 import io.github.wlenaerts.mindmapper.core.model.newMindMap
 import io.github.wlenaerts.mindmapper.document.ImageCache
 import io.github.wlenaerts.mindmapper.document.ImageImporter
+import io.github.wlenaerts.mindmapper.document.ImportedImage
 import io.github.wlenaerts.mindmapper.document.isValidTitle
 import io.github.wlenaerts.mindmapper.document.titleFromFileName
 import io.github.wlenaerts.mindmapper.export.ExportFormat
@@ -192,12 +200,15 @@ class EditorViewModel(application: Application, savedState: SavedStateHandle) : 
         return renderer.metrics.format(topic, map.depthOf(id))
     }
 
-    /** Sets text and formatting as one edit; bold equal to the level's default is stored as "default". */
-    fun setTextAndFormat(id: String, text: String, format: TopicMetrics.Format) {
+    /**
+     * Sets text, formatting and text colour (null: automatic) as one edit; bold equal to the level's default
+     * is stored as "default".
+     */
+    fun setTextAndFormat(id: String, text: String, format: TopicMetrics.Format, textColor: Int? = _state.value.map?.find(id)?.textColor) {
         val map = _state.value.map ?: return
         val defaultBold = renderer.metrics.style(map.depthOf(id)).bold
         val bold = format.bold.takeIf { it != defaultBold }
-        edit({ it.setText(id, text.trimEnd()).setTextFormat(id, bold, format.italic, format.underline) })
+        edit({ it.setText(id, text.trimEnd()).setTextFormat(id, bold, format.italic, format.underline).setTextColor(id, textColor) })
     }
 
     fun deleteSelected() {
@@ -211,17 +222,63 @@ class EditorViewModel(application: Application, savedState: SavedStateHandle) : 
 
     fun setImageWidth(id: String, width: Float) = edit({ it.setImageWidth(id, width) })
 
+    /** The map before the image resize in progress, or null when no resize is in progress. */
+    private var resizeStart: MindMap? = null
+
+    /** Shows topic [id]'s image at [width] while its corner handle is dragged, without an undo step. */
+    fun previewImageWidth(id: String, width: Float) {
+        val map = _state.value.map ?: return
+        if (resizeStart == null) resizeStart = map
+        val next = map.setImageWidth(id, width)
+        if (next != map) show(next, _state.value.selectedId)
+    }
+
+    /** Ends a resize started with [previewImageWidth] as one undo step. */
+    fun commitImageWidth() {
+        val start = resizeStart ?: return
+        resizeStart = null
+        val map = _state.value.map ?: return
+        if (map == start || !::history.isInitialized) return
+        history.push(map)
+        show(map, _state.value.selectedId)
+    }
+
     fun removeImage(id: String) = edit({ it.setImage(id, null) })
 
-    fun importImage(id: String, uri: Uri) {
+    fun importImage(id: String, uri: Uri) = import(uri) { map, image -> map.setImage(id, image) }
+
+    /** Sets the map's background image to the picture at [uri]. */
+    fun importBackgroundImage(uri: Uri) = import(uri) { map, image -> map.setBackgroundImage(image.path) }
+
+    fun removeBackgroundImage() = edit({ it.setBackgroundImage(null) })
+
+    private fun import(uri: Uri, apply: (MindMap, TopicImage) -> MindMap) {
         viewModelScope.launch {
             val imported = withContext(Dispatchers.IO) { runCatching { ImageImporter(app.contentResolver).import(uri) } }
             imported.onSuccess { image ->
                 images[image.path] = image.bytes
-                edit({ it.setImage(id, image.image) })
+                edit({ apply(it, image.image) })
             }.onFailure { _state.update { it.copy(message = R.string.error_image) } }
         }
     }
+
+    /** Sets an already imported image as background; used where no content URI is involved. */
+    internal fun setBackgroundImage(path: String, bytes: ByteArray) {
+        images[path] = bytes
+        edit({ it.setBackgroundImage(path) })
+    }
+
+    /** Gives topic [id] an already imported image; used where no content URI is involved. */
+    internal fun attachImage(id: String, image: ImportedImage) {
+        images[image.path] = image.bytes
+        edit({ it.setImage(id, image.image) })
+    }
+
+    fun setBackground(color: Int?) = edit({ it.setBackground(color) })
+
+    fun setBranchColorScheme(scheme: BranchColorScheme) = edit({ it.setBranchColorScheme(scheme) })
+
+    fun setBranchColor(id: String, color: Int?) = edit({ it.setBranchColor(id, color) })
 
     fun setLayout(kind: LayoutKind) = edit({ it.setLayout(kind) })
 

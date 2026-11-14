@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.core.graphics.withScale
 import androidx.compose.ui.semantics.selected
+import io.github.wlenaerts.mindmapper.core.model.BranchColorScheme
 import io.github.wlenaerts.mindmapper.core.model.BranchStyle
 import io.github.wlenaerts.mindmapper.render.MapRenderer
 import io.github.wlenaerts.mindmapper.render.MapTheme
@@ -72,7 +73,6 @@ import androidx.compose.ui.unit.dp
 import io.github.wlenaerts.mindmapper.R
 import io.github.wlenaerts.mindmapper.core.model.CentralShape
 import io.github.wlenaerts.mindmapper.core.model.MindMap
-import io.github.wlenaerts.mindmapper.core.model.TopicImage
 import io.github.wlenaerts.mindmapper.export.ExportFormat
 import io.github.wlenaerts.mindmapper.document.isValidTitle
 import io.github.wlenaerts.mindmapper.render.IconSet
@@ -82,11 +82,13 @@ import io.github.wlenaerts.mindmapper.render.TopicMetrics
 fun TextDialog(
     initial: String,
     format: TopicMetrics.Format,
-    onConfirm: (String, TopicMetrics.Format) -> Unit,
+    textColor: Int?,
+    onConfirm: (String, TopicMetrics.Format, Int?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var value by remember { mutableStateOf(TextFieldValue(initial, TextRange(0, initial.length))) }
     var current by remember { mutableStateOf(format) }
+    var color by remember { mutableStateOf(textColor) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
     AlertDialog(
@@ -108,7 +110,7 @@ fun TextDialog(
                     ),
                     // The keyboard's action key confirms; long text still wraps on the map.
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { onConfirm(value.text, current) }),
+                    keyboardActions = KeyboardActions(onDone = { onConfirm(value.text, current, color) }),
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FormatToggle(stringResource(R.string.format_bold), "B", current.bold, TextStyle(fontWeight = FontWeight.Bold)) {
@@ -121,9 +123,11 @@ fun TextDialog(
                         current = current.copy(underline = it)
                     }
                 }
+                Text(stringResource(R.string.text_colour), style = MaterialTheme.typography.titleSmall)
+                ColorChoice(selected = color, onPick = { color = it }, testTag = "text_colour")
             }
         },
-        confirmButton = { TextButton(onClick = { onConfirm(value.text, current) }) { Text(stringResource(R.string.action_ok)) } },
+        confirmButton = { TextButton(onClick = { onConfirm(value.text, current, color) }) { Text(stringResource(R.string.action_ok)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
     )
 }
@@ -238,35 +242,45 @@ fun IconDialog(current: String?, onPick: (String?) -> Unit, onDismiss: () -> Uni
     )
 }
 
-@Composable
-fun ImageDialog(image: TopicImage, onWidth: (Float) -> Unit, onReplace: () -> Unit, onRemove: () -> Unit, onDismiss: () -> Unit) {
-    var width by remember { mutableFloatStateOf(image.width) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.image_title)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(R.string.image_width))
-                Slider(
-                    value = width,
-                    onValueChange = { width = it },
-                    onValueChangeFinished = { onWidth(width) },
-                    valueRange = TopicImage.MIN_WIDTH..TopicImage.MAX_WIDTH,
-                    modifier = Modifier.testTag("image_width"),
-                )
-                TextButton(onClick = onReplace) { Text(stringResource(R.string.image_replace)) }
-                TextButton(onClick = onRemove) { Text(stringResource(R.string.image_remove)) }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_ok)) } },
-    )
-}
-
 val CentralColors: List<Int> = listOf(
     0xFF3D5A80, 0xFF1D3557, 0xFF2A9D8F, 0xFF264653, 0xFF6A4C93, 0xFF8E44AD,
     0xFFE63946, 0xFFC0392B, 0xFFF4A261, 0xFFE9C46A, 0xFF52B788, 0xFF2D6A4F,
     0xFF457B9D, 0xFF0077B6, 0xFF495057, 0xFF212529,
 ).map { it.toInt() }
+
+/** Colours for text, branches and backgrounds: the central colours plus white, light tints and black. */
+val ColorSwatches: List<Int> = CentralColors + listOf(
+    0xFFFFFFFF, 0xFFF8F9FA, 0xFFFFF3C4, 0xFFFDE2E4, 0xFFE2F0CB, 0xFFDDEBF7, 0xFFEDE7F6, 0xFF000000,
+).map { it.toInt() }
+
+/**
+ * An "Automatic" chip followed by colour swatches; [selected] null means automatic. The current choice is
+ * marked. [testTag] prefixes the tags of the chip (`_auto`) and swatches (`_<index>`).
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun ColorChoice(selected: Int?, onPick: (Int?) -> Unit, testTag: String, colors: List<Int> = ColorSwatches) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(
+            selected = selected == null,
+            onClick = { onPick(null) },
+            label = { Text(stringResource(R.string.colour_automatic)) },
+            modifier = Modifier.testTag("${testTag}_auto"),
+        )
+        colors.forEachIndexed { i, c ->
+            val swatchLabel = stringResource(R.string.colour_swatch, (i + 1).toString())
+            Box(
+                Modifier
+                    .size(36.dp)
+                    .background(Color(c), CircleShape)
+                    .border(if (c == selected) 3.dp else 1.dp, if (c == selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                    .clickable { onPick(c) }
+                    .semantics { contentDescription = swatchLabel; this.selected = c == selected }
+                    .testTag("${testTag}_$i"),
+            )
+        }
+    }
+}
 
 fun shapeLabel(shape: CentralShape): Int = when (shape) {
     CentralShape.CIRCLE -> R.string.shape_circle
@@ -284,14 +298,22 @@ fun shapeLabel(shape: CentralShape): Int = when (shape) {
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun BranchStyleDialog(current: BranchStyle, colorSlot: Int, renderer: MapRenderer, onPick: (BranchStyle) -> Unit, onDismiss: () -> Unit) {
-    val theme = if (isSystemInDarkTheme()) MapTheme.Dark else MapTheme.Light
-    val color = theme.branchColor(colorSlot)
+fun BranchStyleDialog(
+    current: BranchStyle,
+    color: Int,
+    customColor: Int?,
+    theme: MapTheme,
+    renderer: MapRenderer,
+    onPick: (BranchStyle) -> Unit,
+    onColor: (Int?) -> Unit,
+    onDismiss: () -> Unit,
+) {
     val tile = RoundedCornerShape(12.dp)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.action_branch_style)) },
         text = {
+          Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 BranchStyle.entries.forEach { style ->
                     val selected = style == current
@@ -314,6 +336,9 @@ fun BranchStyleDialog(current: BranchStyle, colorSlot: Int, renderer: MapRendere
                     }
                 }
             }
+            Text(stringResource(R.string.branch_colour), style = MaterialTheme.typography.titleSmall)
+            ColorChoice(selected = customColor, onPick = onColor, testTag = "branch_colour")
+          }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_ok)) } },
     )
@@ -330,9 +355,16 @@ fun StyleDialog(
     color: Int,
     trunkWidth: Float,
     trunkTaper: Float,
+    scheme: BranchColorScheme,
+    background: Int?,
+    hasBackgroundImage: Boolean,
     onShape: (CentralShape) -> Unit,
     onColor: (Int) -> Unit,
     onTrunk: (width: Float, taper: Float) -> Unit,
+    onScheme: (BranchColorScheme) -> Unit,
+    onBackground: (Int?) -> Unit,
+    onChooseBackgroundImage: () -> Unit,
+    onRemoveBackgroundImage: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     var width by remember { mutableFloatStateOf(trunkWidth) }
@@ -360,6 +392,30 @@ fun StyleDialog(
                                 .clickable { onColor(c) }
                                 .semantics { contentDescription = swatchLabel },
                         )
+                    }
+                }
+                Text(stringResource(R.string.style_branch_colours), style = MaterialTheme.typography.titleSmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = scheme == BranchColorScheme.PALETTE,
+                        onClick = { onScheme(BranchColorScheme.PALETTE) },
+                        label = { Text(stringResource(R.string.scheme_palette)) },
+                    )
+                    FilterChip(
+                        selected = scheme == BranchColorScheme.SHADES,
+                        onClick = { onScheme(BranchColorScheme.SHADES) },
+                        label = { Text(stringResource(R.string.scheme_shades)) },
+                        modifier = Modifier.testTag("scheme_shades"),
+                    )
+                }
+                Text(stringResource(R.string.style_background), style = MaterialTheme.typography.titleSmall)
+                ColorChoice(selected = background, onPick = onBackground, testTag = "background")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = onChooseBackgroundImage, modifier = Modifier.testTag("background_image")) {
+                        Text(stringResource(R.string.background_choose_image))
+                    }
+                    if (hasBackgroundImage) {
+                        TextButton(onClick = onRemoveBackgroundImage) { Text(stringResource(R.string.background_remove_image)) }
                     }
                 }
                 Text(stringResource(R.string.style_trunk_width), style = MaterialTheme.typography.titleSmall)

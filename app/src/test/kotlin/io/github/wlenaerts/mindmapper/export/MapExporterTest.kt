@@ -32,6 +32,15 @@ class MapExporterTest {
     }
 
     @Test
+    fun pngUsesTheMapsOwnBackground() {
+        val green = 0xFF1B4332.toInt()
+        val out = ByteArrayOutputStream()
+        exporter.writePng(map.copy(background = green), noImages, out)
+        val bitmap = BitmapFactory.decodeByteArray(out.toByteArray(), 0, out.size())
+        listOf(1 to 1, bitmap.width - 2 to bitmap.height - 2).forEach { (x, y) -> assertEquals(green, bitmap.getPixel(x, y)) }
+    }
+
+    @Test
     fun thumbnailIsSmall() {
         val bytes = exporter.thumbnail(map, noImages)
         val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)

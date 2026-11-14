@@ -20,7 +20,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
@@ -35,7 +34,6 @@ import io.github.wlenaerts.mindmapper.core.model.MindMap
 import io.github.wlenaerts.mindmapper.core.view.Viewport
 import io.github.wlenaerts.mindmapper.render.ImageSource
 import io.github.wlenaerts.mindmapper.render.MapRenderer
-import io.github.wlenaerts.mindmapper.render.MapTheme
 
 /** Zoom limits relative to 1 layout unit = 1 dp. */
 const val MIN_ZOOM = 0.2f
@@ -63,7 +61,7 @@ fun MapCanvas(
     onDrop: ((draggedId: String, target: DropTarget) -> Unit)? = null,
     onDragActiveChange: (Boolean) -> Unit = {},
 ) {
-    val theme = if (isSystemInDarkTheme()) MapTheme.Dark else MapTheme.Light
+    val theme = renderer.theme(map, isSystemInDarkTheme(), images)
     val density = LocalDensity.current.density
     val currentViewport by rememberUpdatedState(viewport)
     val currentMap by rememberUpdatedState(map)
@@ -150,9 +148,10 @@ fun MapCanvas(
     }
 
     Canvas(modifier = gestures) {
-        drawRect(Color(theme.background))
         drawIntoCanvas { canvas ->
             val native = canvas.nativeCanvas
+            // In screen space, so a background image stays put while the map is panned and zoomed.
+            renderer.drawBackground(native, map, theme, images, size.width, size.height)
             native.save()
             native.translate(viewport.offsetX, viewport.offsetY)
             native.scale(viewport.scale, viewport.scale)

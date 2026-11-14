@@ -7,6 +7,11 @@ import io.github.wlenaerts.mindmapper.core.edit.addSiblingAfter
 import io.github.wlenaerts.mindmapper.core.edit.delete
 import io.github.wlenaerts.mindmapper.core.edit.move
 import io.github.wlenaerts.mindmapper.core.edit.resolveDrop
+import io.github.wlenaerts.mindmapper.core.edit.setBackground
+import io.github.wlenaerts.mindmapper.core.edit.setBackgroundImage
+import io.github.wlenaerts.mindmapper.core.edit.setBranchColor
+import io.github.wlenaerts.mindmapper.core.edit.setBranchColorScheme
+import io.github.wlenaerts.mindmapper.core.edit.setTextColor
 import io.github.wlenaerts.mindmapper.core.edit.setBranchStyle
 import io.github.wlenaerts.mindmapper.core.edit.setCentralShape
 import io.github.wlenaerts.mindmapper.core.edit.setDuration
@@ -19,6 +24,7 @@ import io.github.wlenaerts.mindmapper.core.edit.setTextFormat
 import io.github.wlenaerts.mindmapper.core.edit.setTrunk
 import io.github.wlenaerts.mindmapper.core.model.MindMap
 import io.github.wlenaerts.mindmapper.core.layout.MapLayouter
+import io.github.wlenaerts.mindmapper.core.model.BranchColorScheme
 import io.github.wlenaerts.mindmapper.core.model.BranchStyle
 import io.github.wlenaerts.mindmapper.core.model.CentralShape
 import io.github.wlenaerts.mindmapper.core.model.LayoutKind
@@ -155,6 +161,45 @@ class MapEditsTest {
     }
 
     @Test
+    fun textColorOnAnyTopic() {
+        val m = map(branch("a", 1))
+        assertEquals(RED, m.setTextColor("a.0", RED).find("a.0")!!.textColor)
+        assertEquals(RED, m.setTextColor("root", RED).root.textColor)
+        assertNull(m.setTextColor("a", RED).setTextColor("a", null).find("a")!!.textColor)
+    }
+
+    @Test
+    fun branchColorOnlyOnMainBranches() {
+        val m = map(branch("a", 1), topic("b"))
+        assertEquals(RED, m.setBranchColor("a", RED).find("a")!!.branchColor)
+        assertNull(m.setBranchColor("a", RED).setBranchColor("a", null).find("a")!!.branchColor)
+        assertEquals(m, m.setBranchColor("a.0", RED))
+        assertEquals(m, m.setBranchColor("root", RED))
+    }
+
+    @Test
+    fun moveKeepsBranchColorAmongMainBranchesAndDropsItBelow() {
+        val m = map(branch("a", 1), topic("b")).setBranchColor("b", RED)
+        assertEquals(RED, m.move("b", "root", 0, Side.LEFT).find("b")!!.branchColor)
+        val below = m.move("b", "a", 0)
+        assertNull(below.find("b")!!.branchColor)
+        assertNull(below.move("b", "root", 2).find("b")!!.branchColor)
+    }
+
+    @Test
+    fun schemeAndBackground() {
+        val m = map(topic("a"))
+        assertEquals(BranchColorScheme.SHADES, m.setBranchColorScheme(BranchColorScheme.SHADES).branchColors)
+        val colored = m.setBackground(RED)
+        assertEquals(RED, colored.background)
+        assertTrue(colored.hasOwnBackground)
+        assertFalse(colored.setBackground(null).hasOwnBackground)
+        val pictured = m.setBackgroundImage("images/bg.webp")
+        assertEquals(setOf("images/bg.webp"), pictured.imagePaths())
+        assertFalse(pictured.setBackgroundImage(null).hasOwnBackground)
+    }
+
+    @Test
     fun durationOnlyOnMainBranches() {
         val m = map(branch("a", 1), topic("b"))
         assertEquals(300, m.setDuration("a", 5).find("a")!!.durationSeconds)
@@ -237,3 +282,5 @@ class MapEditsTest {
         assertEquals(Side.LEFT, resolveDrop(m, layout, "a", d.rect.centerX, d.rect.top + 1)!!.side)
     }
 }
+
+private val RED = 0xFFE63946.toInt()

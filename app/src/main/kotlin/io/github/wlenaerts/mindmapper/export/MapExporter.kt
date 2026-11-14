@@ -21,8 +21,9 @@ enum class ExportFormat(val extension: String, val mimeType: String) {
 }
 
 /**
- * Renders complete maps off screen: PDF, PNG and the thumbnail stored in `.mindmap` files. Always uses
- * the light theme on white, whatever the app theme. Has its own renderer so it can run off the main thread.
+ * Renders complete maps off screen: PDF, PNG and the thumbnail stored in `.mindmap` files. A map without a
+ * background of its own uses the light theme on white, whatever the app theme; otherwise its own background
+ * and the appearance that fits it. Has its own renderer so it can run off the main thread.
  */
 class MapExporter(context: Context) {
     private val renderer = MapRenderer(context.applicationContext)
@@ -81,10 +82,15 @@ class MapExporter(context: Context) {
     }
 
     private fun drawInto(canvas: Canvas, map: MindMap, bounds: Rect, size: ExportSize, margin: Float, images: ImageSource) {
-        canvas.drawColor(Color.WHITE)
+        val theme = if (map.hasOwnBackground) renderer.theme(map, systemDark = false, images) else MapTheme.Light
+        if (map.hasOwnBackground) {
+            renderer.drawBackground(canvas, map, theme, images, size.width.toFloat(), size.height.toFloat())
+        } else {
+            canvas.drawColor(Color.WHITE)
+        }
         canvas.scale(size.scale, size.scale)
         canvas.translate(margin - bounds.left, margin - bounds.top)
-        renderer.draw(canvas, map, renderer.layout(map, showDurations = false), MapTheme.Light, images)
+        renderer.draw(canvas, map, renderer.layout(map, showDurations = false), theme, images)
     }
 
     private companion object {

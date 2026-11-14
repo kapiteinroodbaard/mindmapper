@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -61,6 +62,7 @@ import io.github.wlenaerts.mindmapper.core.model.LayoutKind
 import io.github.wlenaerts.mindmapper.core.model.styleOrStandard
 import io.github.wlenaerts.mindmapper.core.view.Viewport
 import io.github.wlenaerts.mindmapper.export.ExportFormat
+import io.github.wlenaerts.mindmapper.render.MapTheme
 import io.github.wlenaerts.mindmapper.ui.map.MapCanvas
 import io.github.wlenaerts.mindmapper.ui.map.fitViewport
 import kotlinx.coroutines.launch
@@ -68,7 +70,6 @@ import kotlinx.coroutines.launch
 private sealed interface EditorDialog {
     data class EditText(val topicId: String) : EditorDialog
     data class ChooseIcon(val topicId: String) : EditorDialog
-    data class EditImage(val topicId: String) : EditorDialog
     data object Style : EditorDialog
     data class BranchStyle(val topicId: String) : EditorDialog
     data class Duration(val topicId: String) : EditorDialog
@@ -125,6 +126,9 @@ fun EditorScreen(viewModel: EditorViewModel, onClose: () -> Unit, onPresent: () 
         val target = imageTarget
         if (uri != null && target != null) viewModel.importImage(target, uri)
         imageTarget = null
+    }
+    val pickBackground = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) viewModel.importBackgroundImage(uri)
     }
     fun chooseImage(topicId: String) {
         imageTarget = topicId
@@ -276,13 +280,23 @@ fun EditorScreen(viewModel: EditorViewModel, onClose: () -> Unit, onPresent: () 
                         onAddChild = viewModel::addChild,
                         onAddSibling = viewModel::addSibling,
                         onEditText = { dialog = EditorDialog.EditText(selected) },
-                        onImage = {
-                            if (map.find(selected)?.image != null) dialog = EditorDialog.EditImage(selected) else chooseImage(selected)
-                        },
+                        onImage = { chooseImage(selected) },
                         onIcon = { dialog = EditorDialog.ChooseIcon(selected) },
                         onStyle = { dialog = if (selectedBox.depth == 0) EditorDialog.Style else EditorDialog.BranchStyle(selected) },
                         onDuration = { dialog = EditorDialog.Duration(selected) },
                         onDelete = viewModel::deleteSelected,
+                        image = map.find(selected)?.image?.let { image ->
+                            viewModel.renderer.imageRect(map, layout, selected)?.let { rect ->
+                                ImageTools(
+                                    rect = rect,
+                                    width = image.width,
+                                    aspect = image.aspect,
+                                    onDelete = { viewModel.removeImage(selected) },
+                                    onResize = { viewModel.previewImageWidth(selected, it) },
+                                    onResizeEnd = viewModel::commitImageWidth,
+                                )
+                            }
+                        },
                     )
                     // Every topic action is on the map now; the toolbar is kept for actions that belong there.
                     TopicToolbar(
@@ -295,13 +309,16 @@ fun EditorScreen(viewModel: EditorViewModel, onClose: () -> Unit, onPresent: () 
     }
 
     val map = state.map
+    val systemDark = isSystemInDarkTheme()
+    val mapTheme = map?.let { viewModel.renderer.theme(it, systemDark, viewModel.imageCache) } ?: MapTheme.Light
     when (val d = dialog) {
         is EditorDialog.EditText -> map?.find(d.topicId)?.let { topic ->
             val format = viewModel.textFormat(d.topicId) ?: return@let
             TextDialog(
                 topic.text,
                 format,
-                onConfirm = { text, newFormat -> viewModel.setTextAndFormat(d.topicId, text, newFormat); dialog = null },
+                topic.textColor,
+                onConfirm = { text, newFormat, color -> viewModel.setTextAndFormat(d.topicId, text, newFormat, color); dialog = null },
                 onDismiss = { dialog = null },
             )
         }
@@ -310,33 +327,34 @@ fun EditorScreen(viewModel: EditorViewModel, onClose: () -> Unit, onPresent: () 
             onPick = { viewModel.setIcon(d.topicId, it); dialog = null },
             onDismiss = { dialog = null },
         )
-        is EditorDialog.EditImage -> map?.find(d.topicId)?.image?.let { image ->
-            ImageDialog(
-                image = image,
-                onWidth = { viewModel.setImageWidth(d.topicId, it) },
-                onReplace = { dialog = null; chooseImage(d.topicId) },
-                onRemove = { viewModel.removeImage(d.topicId); dialog = null },
-                onDismiss = { dialog = null },
-            )
-        }
         EditorDialog.Style -> map?.let {
             StyleDialog(
                 shape = it.centralShape,
                 color = it.centralColor,
                 trunkWidth = it.trunkWidth,
                 trunkTaper = it.trunkTaper,
+                scheme = it.branchColors,
+                background = it.background,
+                hasBackgroundImage = it.backgroundImage != null,
                 onShape = viewModel::setCentralShape,
                 onColor = viewModel::setCentralColor,
                 onTrunk = viewModel::setTrunk,
+                onScheme = viewModel::setBranchColorScheme,
+                onBackground = viewModel::setBackground,
+                onChooseBackgroundImage = { pickBackground.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                onRemoveBackgroundImage = viewModel::removeBackgroundImage,
                 onDismiss = { dialog = null },
             )
         }
         is EditorDialog.BranchStyle -> map?.find(d.topicId)?.let { topic ->
             BranchStyleDialog(
                 current = topic.styleOrStandard,
-                colorSlot = state.layout?.get(d.topicId)?.colorSlot ?: 0,
+                color = mapTheme.let { theme -> state.layout?.let { viewModel.renderer.branchColor(map, it, theme, d.topicId) } } ?: 0,
+                customColor = topic.branchColor,
+                theme = mapTheme,
                 renderer = viewModel.renderer,
                 onPick = { viewModel.setBranchStyle(d.topicId, it) },
+                onColor = { viewModel.setBranchColor(d.topicId, it) },
                 onDismiss = { dialog = null },
             )
         }
