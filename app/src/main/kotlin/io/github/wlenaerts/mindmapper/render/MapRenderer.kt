@@ -130,9 +130,14 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
     fun branchColor(map: MindMap, layout: MapLayout, theme: MapTheme, topicId: String): Int =
         branchColors(map, layout, theme)[topicId] ?: map.centralColor
 
+    // Shades suit what the map is drawn on: the background image's average (cached by [theme]), else the colour.
     private fun schemeColor(map: MindMap, layout: MapLayout, theme: MapTheme, box: TopicBox): Int = when (map.branchColors) {
         BranchColorScheme.PALETTE -> theme.branchColor(box.colorSlot)
-        BranchColorScheme.SHADES -> BranchShades.shade(map.centralColor, box.clockwise, layout.mainBranchCount)
+        BranchColorScheme.SHADES -> BranchShades.shade(
+            map.centralColor, box.clockwise, layout.mainBranchCount,
+            darkBackground = relativeLuminance(theme.text) > 0.5f,
+            backgroundLuminance = map.backgroundImage?.let(luminances::get) ?: relativeLuminance(theme.background),
+        )
     }
 
     /**

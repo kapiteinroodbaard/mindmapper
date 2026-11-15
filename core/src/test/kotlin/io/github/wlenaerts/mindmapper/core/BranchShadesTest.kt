@@ -9,30 +9,76 @@ import org.junit.Test
 
 class BranchShadesTest {
     private val red = 0xFFC0392B.toInt()
+    private val blue = 0xFF2E86AB.toInt()
+    private val white = BranchShades.luminance(0xFFFFFFFF.toInt())
+    private val darkTheme = BranchShades.luminance(0xFF17171B.toInt())
+    private val navy = BranchShades.luminance(0xFF1D3557.toInt())
+
+    private fun shades(central: Int, dark: Boolean, background: Float, count: Int = 4) =
+        (0 until count).map { BranchShades.shade(central, it, count, dark, background) }
+
+    private fun lightness(color: Int) = BranchShades.toHsl(color).third
 
     @Test
     fun fourBranchesGetDistinctShadesLightToDarkInTheCentralHue() {
-        val shades = (0 until 4).map { BranchShades.shade(red, it, 4) }
+        val shades = shades(red, dark = false, background = white)
         assertEquals(4, shades.toSet().size)
         val hsl = shades.map(BranchShades::toHsl)
         val lightness = hsl.map { it.third }
         assertEquals(lightness.sortedDescending(), lightness)
-        assertEquals(BranchShades.LIGHTEST, lightness.first(), 0.01f)
-        assertEquals(BranchShades.DARKEST, lightness.last(), 0.01f)
+        assertEquals(BranchShades.LIGHT_LIGHTEST, lightness.first(), 0.01f)
+        assertEquals(BranchShades.LIGHT_DARKEST, lightness.last(), 0.01f)
         val hue = BranchShades.toHsl(red).first
         hsl.forEach { assertEquals(hue, it.first, 2f) }
     }
 
     @Test
     fun oneBranchGetsTheMiddleShade() {
-        val l = BranchShades.toHsl(BranchShades.shade(red, 0, 1)).third
-        assertEquals((BranchShades.LIGHTEST + BranchShades.DARKEST) / 2, l, 0.01f)
+        val l = lightness(BranchShades.shade(red, 0, 1, false, white))
+        assertEquals((BranchShades.LIGHT_LIGHTEST + BranchShades.LIGHT_DARKEST) / 2, l, 0.01f)
+    }
+
+    @Test
+    fun shadesOnADarkBackgroundAreLighterAndStillOrdered() {
+        val light = shades(red, dark = false, background = white).map(::lightness)
+        val dark = shades(red, dark = true, background = darkTheme).map(::lightness)
+        assertEquals(dark.sortedDescending(), dark)
+        light.zip(dark).forEach { (l, d) -> assertTrue("$d > $l", d > l) }
+        assertEquals(BranchShades.DARK_LIGHTEST, dark.first(), 0.01f)
+    }
+
+    @Test
+    fun blueShadesKeepTheContrastFloor() {
+        listOf(false to white, true to darkTheme, true to navy).forEach { (dark, background) ->
+            val shades = shades(blue, dark, background)
+            shades.forEach { c ->
+                val ratio = BranchShades.contrastRatio(BranchShades.luminance(c), background)
+                assertTrue("ratio $ratio on $background", ratio >= BranchShades.MIN_CONTRAST)
+            }
+            val l = shades.map(::lightness)
+            assertEquals(l.sortedDescending(), l)
+        }
+    }
+
+    @Test
+    fun midOrangeBackgroundReachesTheFloorOrTheLimit() {
+        val orange = BranchShades.luminance(0xFFE67E22.toInt())
+        listOf(false, true).forEach { dark ->
+            shades(blue, dark, orange).forEach { c ->
+                val ratio = BranchShades.contrastRatio(BranchShades.luminance(c), orange)
+                val l = lightness(c)
+                assertTrue(
+                    "ratio $ratio at lightness $l",
+                    ratio >= BranchShades.MIN_CONTRAST || l <= BranchShades.MIN_LIGHTNESS + 0.01f || l >= BranchShades.MAX_LIGHTNESS - 0.01f,
+                )
+            }
+        }
     }
 
     @Test
     fun greyCentralColourStillGivesAVisibleRamp() {
         val grey = 0xFF808080.toInt()
-        assertTrue(BranchShades.toHsl(BranchShades.shade(grey, 0, 3)).second > 0.3f)
+        assertTrue(BranchShades.toHsl(BranchShades.shade(grey, 0, 3, false, white)).second > 0.3f)
     }
 
     @Test

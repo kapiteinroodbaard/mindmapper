@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.wlenaerts.mindmapper.core.layout.BranchShades
 import io.github.wlenaerts.mindmapper.core.model.BranchColorScheme
 import io.github.wlenaerts.mindmapper.core.model.MindMap
 import io.github.wlenaerts.mindmapper.core.model.Topic
@@ -58,8 +59,27 @@ class ColourRenderTest {
         assertEquals(c["a"], c["a1"])
         val green = colors(m.copy(centralColor = 0xFF2D6A4F.toInt()))
         assertTrue(green["a"] != c["a"])
-        // Shades ignore the theme's palette.
-        assertEquals(c, colors(m, MapTheme.Dark))
+    }
+
+    @Test
+    fun shadesAreLighterInTheDarkAppearance() {
+        val m = map.copy(branchColors = BranchColorScheme.SHADES, centralColor = 0xFF2E86AB.toInt())
+        val light = colors(m, MapTheme.Light)
+        val dark = colors(m, MapTheme.Dark)
+        listOf("a", "b", "c", "d").forEach { id ->
+            assertTrue(id, BranchShades.toHsl(dark.getValue(id)).third > BranchShades.toHsl(light.getValue(id)).third)
+        }
+    }
+
+    @Test
+    fun shadesContrastWithANavyBackgroundColour() {
+        val navy = 0xFF1D3557.toInt()
+        val m = map.copy(branchColors = BranchColorScheme.SHADES, centralColor = 0xFF2E86AB.toInt(), background = navy)
+        val c = colors(m, MapTheme.forMap(m, systemDark = false, imageLuminance = null))
+        listOf("a", "b", "c", "d").forEach { id ->
+            val ratio = BranchShades.contrastRatio(relativeLuminance(c.getValue(id)), relativeLuminance(navy))
+            assertTrue("$id: $ratio", ratio >= 1.5f)
+        }
     }
 
     @Test
