@@ -1,0 +1,1 @@
+Shades of the central colour now stay visible on dark and coloured backgrounds, and image resize handles sit on the side the image grows to and follow your finger.
