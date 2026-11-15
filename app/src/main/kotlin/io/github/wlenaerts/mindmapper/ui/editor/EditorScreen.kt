@@ -290,7 +290,7 @@ fun EditorScreen(viewModel: EditorViewModel, onClose: () -> Unit, onPresent: () 
                                 ImageTools(
                                     rect = rect,
                                     width = image.width,
-                                    aspect = image.aspect,
+                                    directions = ImageTools.outwardDirections(selectedBox),
                                     onDelete = { viewModel.removeImage(selected) },
                                     onResize = { viewModel.previewImageWidth(selected, it) },
                                     onResizeEnd = viewModel::commitImageWidth,

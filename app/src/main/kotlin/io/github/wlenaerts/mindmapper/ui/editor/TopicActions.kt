@@ -2,7 +2,10 @@ package io.github.wlenaerts.mindmapper.ui.editor
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -23,16 +26,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -217,20 +215,29 @@ private fun ActionBar(
 }
 
 /**
- * The image of the selected topic: [rect] in layout units, its current [width] and [aspect] (width / height),
- * and what deleting and resizing do. [onResize] is called with the new width during a drag, [onResizeEnd]
- * when the drag ends.
+ * The image of the selected topic: [rect] in layout units, its current [width], the [directions] it can grow
+ * in (-1 left, 1 right; see [outwardDirections]), and what deleting and resizing do. [onResize] is called with
+ * the new width during a drag, [onResizeEnd] when the drag ends.
  */
 class ImageTools(
     val rect: Rect,
     val width: Float,
-    val aspect: Float,
+    val directions: List<Int>,
     val onDelete: () -> Unit,
     val onResize: (Float) -> Unit,
     val onResizeEnd: () -> Unit,
-)
+) {
+    companion object {
+        /** A topic grows away from its parent; the central topic grows to both sides. */
+        fun outwardDirections(box: TopicBox): List<Int> = when {
+            box.depth == 0 -> listOf(-1, 1)
+            box.side == Side.LEFT -> listOf(-1)
+            else -> listOf(1)
+        }
+    }
+}
 
-/** The delete button and the four corner handles on the selected topic's image. */
+/** The delete button and the handles on the outer corners of the selected topic's image. */
 @Composable
 private fun ImageHandles(image: ImageTools, viewport: Viewport, width: Int, height: Int) {
     val density = LocalDensity.current
@@ -238,14 +245,13 @@ private fun ImageHandles(image: ImageTools, viewport: Viewport, width: Int, heig
     val inset = with(density) { ImageDeleteInset.toPx() }
     val resizeLabel = stringResource(R.string.image_resize)
     // Corners as outward directions: -1 is left or up, 1 is right or down.
-    for ((sx, sy) in listOf(-1 to -1, 1 to -1, -1 to 1, 1 to 1)) {
+    for (sx in image.directions) for (sy in listOf(-1, 1)) {
         CornerHandle(
             label = resizeLabel,
             tag = "image_handle_${if (sy < 0) "top" else "bottom"}_${if (sx < 0) "left" else "right"}",
             image = image,
             scale = viewport.scale,
             sx = sx,
-            sy = sy,
             modifier = Modifier.placed(width, height) { w, h ->
                 val x = if (sx < 0) r.left else r.right
                 val y = if (sy < 0) r.top else r.bottom
@@ -265,33 +271,34 @@ private fun ImageHandles(image: ImageTools, viewport: Viewport, width: Int, heig
 }
 
 /**
- * A round handle on an image corner. Dragging it outward along the corner's diagonal grows the image. The
- * handle moves while the layout reflows, so the drag is measured in root coordinates, not in its own.
+ * A round handle on an image corner, on the side [sx] (-1 left, 1 right) the image grows to. Dragging it
+ * sets the width so the image's outer edge, where the handle sits, moves to the finger. The layout reflows
+ * between events and the edge may move by the full or by half the width change, so each event closes the
+ * remaining gap from the current width rather than adding up deltas; vertical movement is ignored.
  */
 @Composable
-private fun CornerHandle(label: String, tag: String, image: ImageTools, scale: Float, sx: Int, sy: Int, modifier: Modifier) {
+private fun CornerHandle(label: String, tag: String, image: ImageTools, scale: Float, sx: Int, modifier: Modifier) {
     val current by rememberUpdatedState(image)
     val currentScale by rememberUpdatedState(scale)
-    var origin by remember { mutableStateOf(Offset.Zero) }
     Box(
         modifier
             .size(CornerHandleSize)
-            .onGloballyPositioned { origin = it.positionInRoot() }
-            .pointerInput(sx, sy) {
-                var start = Offset.Zero
-                var startWidth = 0f
-                detectDragGestures(
-                    onDragStart = { position -> start = origin + position; startWidth = current.width },
-                    onDragEnd = { current.onResizeEnd() },
-                    onDragCancel = { current.onResizeEnd() },
-                    onDrag = { change, _ ->
+            .pointerInput(sx) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    // Where on the handle it was grabbed, so the grab point (not the centre) follows the finger.
+                    val grab = down.position.x - size.width / 2f
+                    fun resize(change: PointerInputChange) {
                         change.consume()
-                        val moved = origin + change.position - start
-                        // Both axes count, the vertical one weighted by the aspect ratio, averaged.
-                        val delta = (sx * moved.x + sy * moved.y * current.aspect) / 2 / currentScale
-                        current.onResize((startWidth + delta).coerceIn(TopicImage.MIN_WIDTH, TopicImage.MAX_WIDTH))
-                    },
-                )
+                        // The handle is laid out on the current edge, so this is the finger's distance to it.
+                        val gap = change.position.x - size.width / 2f - grab
+                        val width = current.width + sx * gap / currentScale
+                        current.onResize(width.coerceIn(TopicImage.MIN_WIDTH, TopicImage.MAX_WIDTH))
+                    }
+                    val start = awaitTouchSlopOrCancellation(down.id) { change, _ -> resize(change) } ?: return@awaitEachGesture
+                    drag(start.id, ::resize)
+                    current.onResizeEnd()
+                }
             }
             .semantics { contentDescription = label }
             .testTag(tag),
