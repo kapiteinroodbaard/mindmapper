@@ -38,6 +38,11 @@ enum class BranchStyle(val serialName: String) {
     PLANT("plant"),
     LIGHTNING("lightning"),
     STRAIGHT("straight"),
+    STEEL("steel"),
+    ROPE("rope"),
+    SNAKE("snake"),
+    ROAD("road"),
+    ARROW("arrow"),
 }
 
 /** Reads unknown style names (from a newer app version) as [BranchStyle.STANDARD] instead of failing. */

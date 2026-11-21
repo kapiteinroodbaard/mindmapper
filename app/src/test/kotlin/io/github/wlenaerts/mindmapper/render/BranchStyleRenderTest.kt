@@ -108,12 +108,14 @@ class BranchStyleRenderTest {
                 listOf(left to top, right to top, left to bottom, right to bottom).forEach { (x, y) ->
                     assertTrue("$s '$text' corner ($x, $y)", region.contains(x, y))
                 }
-                // The flat end of a branch, at its thickest pulse, lies fully inside the box on both sides.
+                // The flat end of a branch, at its thickest pulse, lies fully inside the box on both sides: the
+                // branch arriving at the inner (left) side and a subtopic's leaving from the outer (right) side.
                 val half = 5f * 1.8f / 2
-                val join = BranchGeometry.mainBoxJoin(s, box, half)
+                val inner = BranchGeometry.mainBoxJoin(s, box, half)
+                val outer = BranchGeometry.mainBoxJoin(s, box, half, outer = true)
                 for (y in listOf(box.centerY - half, box.centerY + half)) {
-                    assertTrue("$s left end at $y", region.contains((box.left + join).toInt(), y.toInt()))
-                    assertTrue("$s right end at $y", region.contains((box.right - join).toInt(), y.toInt()))
+                    assertTrue("$s left end at $y", region.contains((box.left + inner).toInt(), y.toInt()))
+                    assertTrue("$s right end at $y", region.contains((box.right - outer).toInt(), y.toInt()))
                 }
             }
         }
@@ -165,6 +167,121 @@ class BranchStyleRenderTest {
         assertTrue(main.last() * 2 >= sub.first() * 2)
         assertTrue(main.first() > main.last())
         assertTrue(sub.first() > sub.last())
+    }
+
+    @Test
+    fun steelRunsStraightWithSharpCornersBetweenItsEnds() {
+        val inside = Rect(-80f, -30f, 80f, 30f)
+        val line = BranchGeometry.angular(0f, 0f, 200f, -60f, inside)
+        assertEquals(0f, line.xs.first(), 0f)
+        assertEquals(200f, line.xs.last(), 0.001f)
+        assertEquals(-60f, line.ys.last(), 0.001f)
+        // Level until well outside the central topic, then two sharp corners, then level into the box.
+        assertTrue((0 until line.size).filter { line.xs[it] <= inside.right }.all { line.ys[it] == 0f })
+        assertEquals(2, (1 until line.size - 1).count { line.miter[it] > 1.02f })
+        // Without a height difference it is one straight piece.
+        assertEquals(0, BranchGeometry.angular(0f, 0f, 200f, 0f, inside).let { l -> (1 until l.size - 1).count { l.miter[it] > 1.02f } })
+    }
+
+    @Test
+    fun roadRunsLevelAndUprightWithRoundedElbows() {
+        val inside = Rect(-80f, -30f, 80f, 30f)
+        for ((x1, y1) in listOf(240f to -90f, -240f to 70f, 240f to 70f, -240f to -90f)) {
+            val line = BranchGeometry.orthogonal(0f, 0f, x1, y1, 16f, inside)
+            assertEquals(x1, line.xs.last(), 0.001f)
+            assertEquals(y1, line.ys.last(), 0.001f)
+            // Every piece is level or upright, except in the elbows, where each step turns only a little.
+            var bends = 0
+            for (i in 1 until line.size) {
+                val dx = line.xs[i] - line.xs[i - 1]
+                val dy = line.ys[i] - line.ys[i - 1]
+                if (kotlin.math.abs(dx) > 0.01f && kotlin.math.abs(dy) > 0.01f) bends++
+            }
+            assertTrue("$x1,$y1 bends $bends", bends in 2..30)
+            assertTrue((1 until line.size - 1).all { line.miter[it] < 1.1f })
+            // The upright piece lies halfway between the central topic and the end.
+            val middle = (if (x1 > 0) inside.right else inside.left).let { (it + x1) / 2 }
+            assertTrue((0 until line.size).any { kotlin.math.abs(line.xs[it] - middle) < 0.01f && kotlin.math.abs(line.ys[it] - y1 / 2) < 4f })
+        }
+    }
+
+    @Test
+    fun ropeLoopingTurnsFullyRoundAndKeepsItsEnds() {
+        val base = BranchGeometry.curve(0f, 0f, 300f, -40f, 100)
+        val halves = BranchGeometry.halfWidths(base, 16f, 5f)
+        for (dir in listOf(1f, -1f)) {
+            val looped = BranchGeometry.looping(base, halves, 120f, 18f, dir)
+            val line = looped.line
+            assertEquals(0f, line.xs.first(), 0.001f)
+            assertEquals(300f, line.xs.last(), 0.01f)
+            assertEquals(-40f, line.ys.last(), 0.01f)
+            assertEquals(line.size, looped.halves.size)
+            assertTrue(looped.split in 1 until line.size - 1)
+            // Halfway round, the rope is a loop's diameter away from the line, on the chosen side.
+            val far = (0 until line.size).maxOf { i -> base.distanceSide(line.xs[i], line.ys[i], dir) }
+            assertTrue("dir $dir reaches $far", far > 30f)
+            // It goes backwards on the far side of the loop.
+            assertTrue((1 until line.size).any { line.xs[it] < line.xs[it - 1] - 0.5f })
+        }
+    }
+
+    /** How far ([x], [y]) lies from the nearest point of this line, along that point's normal times [dir]. */
+    private fun Centreline.distanceSide(x: Float, y: Float, dir: Float): Float {
+        val i = (0 until size).minBy { hypot(xs[it] - x, ys[it] - y) }
+        return ((x - xs[i]) * nx[i] + (y - ys[i]) * ny[i]) * dir
+    }
+
+    @Test
+    fun snakeWaveLeavesTheEndsInPlace() {
+        val inside = Rect(-80f, -30f, 80f, 30f)
+        val base = BranchGeometry.curve(0f, 0f, 260f, -50f, 90)
+        val line = BranchGeometry.wave(base, 7f, 70f, inside)
+        assertEquals(base.xs.last(), line.xs.last(), 0.5f)
+        assertEquals(base.ys.last(), line.ys.last(), 0.5f)
+        // Still inside the central topic it does not wave; out in the open it does.
+        for (i in 0 until line.exitIndex(inside)) assertEquals(base.ys[i], line.ys[i], 0.001f)
+        assertTrue((0 until line.size).any { kotlin.math.abs(line.ys[it] - base.ys[it]) > 4f })
+    }
+
+    @Test
+    fun arrowBoxPointsAwayFromTheCentre() {
+        val box = Rect(0f, 0f, 120f, 40f)
+        val right = bounds(BranchGeometry.mainBoxPath(BranchStyle.ARROW, box, right = true))
+        val region = Region().apply { setPath(BranchGeometry.mainBoxPath(BranchStyle.ARROW, box, right = true), Region(-10, -10, 130, 50)) }
+        assertEquals(box.right, right.right, 0.01f)
+        // The point is at the right, the notch at the left.
+        assertTrue(region.contains(118, 20))
+        assertFalse(region.contains(118, 2))
+        assertFalse(region.contains(2, 20))
+        assertTrue(region.contains(2, 2))
+        val left = Region().apply { setPath(BranchGeometry.mainBoxPath(BranchStyle.ARROW, box, right = false), Region(-10, -10, 130, 50)) }
+        assertTrue(left.contains(2, 20))
+        assertFalse(left.contains(118, 20))
+    }
+
+    @Test
+    fun ropeAndSnakeBranchesAreUnchangedByEditsElsewhere() {
+        for (style in listOf(BranchStyle.ROPE, BranchStyle.SNAKE, BranchStyle.STEEL, BranchStyle.ROAD, BranchStyle.ARROW)) {
+            val map = MindMap(
+                root = Topic(id = "root", text = "Centre", children = listOf(
+                    Topic(id = "a", text = "Styled", style = style),
+                    Topic(id = "b", text = "Other"),
+                    Topic(id = "c", text = "Third"),
+                )),
+            )
+            val edited = map.copy(root = map.root.copy(children = map.root.children.map { if (it.id == "c") it.copy(text = "Edited text") else it }))
+            val before = render(map)
+            val after = render(edited)
+            val layout = renderer.layout(map)
+            val styled = layout["a"]!!.rect
+            val root = layout["root"]!!.rect
+            var drawn = 0
+            for (x in (root.right + ORIGIN).toInt() until (styled.left + ORIGIN).toInt()) for (y in (styled.top - 60 + ORIGIN).toInt() until (root.centerY + ORIGIN).toInt()) {
+                assertEquals("$style at $x,$y", before.getPixel(x, y), after.getPixel(x, y))
+                if (before.getPixel(x, y) != Color.WHITE) drawn++
+            }
+            assertTrue("$style drawn $drawn", drawn > 50)
+        }
     }
 
     @Test

@@ -4,6 +4,7 @@ import android.graphics.Path
 import io.github.wlenaerts.mindmapper.core.layout.Rect
 import io.github.wlenaerts.mindmapper.core.layout.Size
 import io.github.wlenaerts.mindmapper.core.model.BranchStyle
+import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -59,16 +60,27 @@ object BranchGeometry {
     private const val BOX_RADIUS = 10f
     /** Extra depth and height so that anti-aliased edges of a branch end stay under its box. */
     private const val JOIN_OVERLAP = 1.5f
+    /** Distance between sample points of straight stretches, so the taper stays smooth. */
+    private const val SAMPLE_SPACING = 3f
+    private const val ARC_STEPS = 12
+    private const val LOOP_STEPS = 120
+    /** Corner radius of the road style's main box. */
+    private const val ROAD_BOX_RADIUS = 6f
+    /** Corner radius of the rope style's main box. */
+    private const val ROPE_BOX_RADIUS = 10f
 
-    /** The smooth S-curve used by the standard and plant styles, leaving and arriving horizontally. */
-    fun curve(x0: Float, y0: Float, x3: Float, y3: Float): Centreline {
+    /**
+     * The smooth S-curve used by the standard and plant styles, leaving and arriving horizontally, sampled in
+     * [steps] pieces.
+     */
+    fun curve(x0: Float, y0: Float, x3: Float, y3: Float, steps: Int = CURVE_STEPS): Centreline {
         val mx = (x0 + x3) / 2
-        val xs = FloatArray(CURVE_STEPS + 1)
-        val ys = FloatArray(CURVE_STEPS + 1)
-        val nx = FloatArray(CURVE_STEPS + 1)
-        val ny = FloatArray(CURVE_STEPS + 1)
-        for (i in 0..CURVE_STEPS) {
-            val t = i / CURVE_STEPS.toFloat()
+        val xs = FloatArray(steps + 1)
+        val ys = FloatArray(steps + 1)
+        val nx = FloatArray(steps + 1)
+        val ny = FloatArray(steps + 1)
+        for (i in 0..steps) {
+            val t = i / steps.toFloat()
             val u = 1 - t
             xs[i] = u * u * u * x0 + 3 * u * u * t * mx + 3 * u * t * t * mx + t * t * t * x3
             ys[i] = u * u * u * y0 + 3 * u * u * t * y0 + 3 * u * t * t * y3 + t * t * t * y3
@@ -78,7 +90,189 @@ object BranchGeometry {
             nx[i] = -dy / len
             ny[i] = dx / len
         }
-        return Centreline(xs, ys, nx, ny, FloatArray(CURVE_STEPS + 1) { 1f })
+        return Centreline(xs, ys, nx, ny, FloatArray(steps + 1) { 1f })
+    }
+
+    /** Enough curve steps for decorations that follow the line closely: one about every three units. */
+    fun denseSteps(x0: Float, y0: Float, x1: Float, y1: Float): Int =
+        ((abs(x1 - x0) + abs(y1 - y0)) / SAMPLE_SPACING).roundToInt().coerceIn(CURVE_STEPS, 400)
+
+    /**
+     * The steel style's line: straight pieces with sharp corners. It runs level out of [inside] (the box it
+     * starts in), slants across the height difference, and arrives level; the slant is 45 degrees when there
+     * is room for it, steeper when there is not.
+     */
+    fun angular(x0: Float, y0: Float, x1: Float, y1: Float, inside: Rect?): Centreline {
+        val sx = if (x1 >= x0) 1f else -1f
+        val run = startRun(x0, x1, inside)
+        val free = abs(x1 - x0) - run
+        val dy = abs(y1 - y0)
+        if (dy < 1f || free < 4f) return LineBuilder(x0, y0).apply { lineTo(x1, y1) }.build()
+        val slant = minOf(dy, free * 0.6f)
+        val c1 = x0 + sx * (run + (free - slant) / 2)
+        return LineBuilder(x0, y0).apply { lineTo(c1, y0); lineTo(c1 + sx * slant, y1); lineTo(x1, y1) }.build()
+    }
+
+    /**
+     * The road style's line: level, then vertical halfway between [inside] and the end, then level again,
+     * with rounded elbows of up to [radius]. Without a height difference it is a straight road.
+     */
+    fun orthogonal(x0: Float, y0: Float, x1: Float, y1: Float, radius: Float, inside: Rect?): Centreline {
+        val sx = if (x1 >= x0) 1f else -1f
+        val sy = if (y1 >= y0) 1f else -1f
+        val from = x0 + sx * startRun(x0, x1, inside)
+        val dy = abs(y1 - y0)
+        if (dy < 1f || abs(x1 - from) < 4f) return LineBuilder(x0, y0).apply { lineTo(x1, y1) }.build()
+        val xm = (from + x1) / 2
+        val r = minOf(radius, dy / 2, abs(xm - from), abs(x1 - xm))
+        val half = PI.toFloat() / 2
+        return LineBuilder(x0, y0).apply {
+            lineTo(xm - sx * r, y0)
+            arc(xm - sx * r, y0 + sy * r, r, -sy * half, if (sx > 0) 0f else -sy * 2 * half)
+            lineTo(xm, y1 - sy * r)
+            arc(xm + sx * r, y1 - sy * r, r, if (sx > 0) sy * 2 * half else 0f, sy * half)
+            lineTo(x1, y1)
+        }.build()
+    }
+
+    /** A straight line sampled about every three units, for decorations that follow the line closely. */
+    fun sampledLine(x0: Float, y0: Float, x1: Float, y1: Float): Centreline = LineBuilder(x0, y0).apply { lineTo(x1, y1) }.build()
+
+    /** How far a line from [x0] towards [x1] runs inside [inside] before it leaves it horizontally. */
+    private fun startRun(x0: Float, x1: Float, inside: Rect?): Float {
+        val r = inside ?: return 0f
+        return (if (x1 >= x0) r.right - x0 else x0 - r.left).coerceIn(0f, abs(x1 - x0))
+    }
+
+    /**
+     * [line] made to wave sideways by [amplitude] every [wavelength] units. The wave starts where the line
+     * leaves [inside], swells, and fades out again before the end so the line arrives straight.
+     */
+    fun wave(line: Centreline, amplitude: Float, wavelength: Float, inside: Rect? = null): Centreline {
+        val lengths = lengths(line)
+        val total = lengths.last()
+        val from = lengths[line.exitIndex(inside)]
+        val xs = FloatArray(line.size)
+        val ys = FloatArray(line.size)
+        for (i in 0 until line.size) {
+            val f = if (total > from) (lengths[i] - from) / (total - from) else 0f
+            val envelope = if (f <= 0f) 0f else sin(PI.toFloat() * minOf(1f, f * 1.15f))
+            val a = amplitude * envelope * sin(2 * PI.toFloat() * lengths[i] / wavelength)
+            xs[i] = line.xs[i] + line.nx[i] * a
+            ys[i] = line.ys[i] + line.ny[i] * a
+        }
+        return Centreline.of(xs, ys)
+    }
+
+    /** The edge of the rope style's main box [r], as a closed line for the rope drawn around it. */
+    fun ropeBoxLine(r: Rect): Centreline = roundedRectLine(r, ROPE_BOX_RADIUS)
+
+    /** The outline of a rounded rectangle as a closed line, starting and ending at the top just past the corner. */
+    private fun roundedRectLine(r: Rect, radius: Float): Centreline {
+        val half = PI.toFloat() / 2
+        return LineBuilder(r.left + radius, r.top).apply {
+            lineTo(r.right - radius, r.top)
+            arc(r.right - radius, r.top + radius, radius, -half, 0f)
+            lineTo(r.right, r.bottom - radius)
+            arc(r.right - radius, r.bottom - radius, radius, 0f, half)
+            lineTo(r.left + radius, r.bottom)
+            arc(r.left + radius, r.bottom - radius, radius, half, 2 * half)
+            lineTo(r.left, r.top + radius)
+            arc(r.left + radius, r.top + radius, radius, 2 * half, 3 * half)
+            lineTo(r.left + radius + 4f, r.top)
+        }.build()
+    }
+
+    /** A line with half widths, after a looping was put into it; [split] is a point halfway round the loop. */
+    class Looped(val line: Centreline, val halves: FloatArray, val split: Int)
+
+    /**
+     * [line] with one full looping of [radius], starting [start] units along it, curling to side [dir] (±1 along
+     * the normal). The rope comes back to cross itself just past where the loop began and goes on in the same
+     * direction.
+     */
+    fun looping(line: Centreline, halves: FloatArray, start: Float, radius: Float, dir: Float): Looped {
+        val walker = Walker(line, halves)
+        val span = radius * 0.9f
+        val xs = ArrayList<Float>()
+        val ys = ArrayList<Float>()
+        val hs = ArrayList<Float>()
+        var split = 0
+        fun add(p: Walker.Sample, across: Float = 0f) {
+            xs += p.x + p.nx * across; ys += p.y + p.ny * across; hs += p.h
+        }
+        var s = 0f
+        while (s < walker.total) {
+            if (s >= start && s < start + span) {
+                val u = (s - start) / span
+                val turn = 2 * PI.toFloat() * u
+                add(walker.at(start + span * u + radius * sin(turn)), dir * radius * (1 - cos(turn)))
+                if (split == 0 && u >= 0.5f) split = xs.size - 1
+                s += span / LOOP_STEPS
+            } else {
+                add(walker.at(s))
+                s += SAMPLE_SPACING
+            }
+        }
+        add(walker.at(walker.total))
+        return Looped(Centreline.of(xs.toFloatArray(), ys.toFloatArray()), hs.toFloatArray(), if (split == 0) xs.size - 1 else split)
+    }
+
+    /** Arc lengths along [line] up to each point. */
+    fun lengths(line: Centreline): FloatArray = FloatArray(line.size).also {
+        for (i in 1 until line.size) it[i] = it[i - 1] + hypot(line.xs[i] - line.xs[i - 1], line.ys[i] - line.ys[i - 1])
+    }
+
+    /** Looks up points along [line] by arc length, with their normals and half widths from [halves]. */
+    class Walker(val line: Centreline, private val halves: FloatArray) {
+        val lengths = lengths(line)
+        val total: Float get() = lengths.last()
+
+        class Sample(val x: Float, val y: Float, val nx: Float, val ny: Float, val h: Float) {
+            val tx: Float get() = ny
+            val ty: Float get() = -nx
+        }
+
+        /** The first point at least [s] along the line. */
+        fun indexAt(s: Float): Int = lengths.indexOfFirst { it >= s }.let { if (it < 0) line.size - 1 else it }
+
+        fun at(s: Float): Sample {
+            val i = indexAt(s).coerceAtLeast(1)
+            val a = lengths[i - 1]
+            val f = ((s - a) / (lengths[i] - a).coerceAtLeast(0.0001f)).coerceIn(0f, 1f)
+            fun lerp(v: FloatArray) = v[i - 1] + (v[i] - v[i - 1]) * f
+            return Sample(lerp(line.xs), lerp(line.ys), lerp(line.nx), lerp(line.ny), lerp(halves))
+        }
+    }
+
+    /** Builds a line from straight stretches (sampled finely) and arcs; corners between stretches stay sharp. */
+    private class LineBuilder(x: Float, y: Float) {
+        private val xs = arrayListOf(x)
+        private val ys = arrayListOf(y)
+
+        fun lineTo(x: Float, y: Float) {
+            val x0 = xs.last()
+            val y0 = ys.last()
+            val length = hypot(x - x0, y - y0)
+            if (length < 0.01f) return
+            val n = (length / SAMPLE_SPACING).roundToInt().coerceAtLeast(1)
+            for (k in 1..n) {
+                xs += x0 + (x - x0) * k / n
+                ys += y0 + (y - y0) * k / n
+            }
+        }
+
+        /** An arc around ([cx], [cy]) from angle [from] to [to] (radians, y pointing down). */
+        fun arc(cx: Float, cy: Float, r: Float, from: Float, to: Float) {
+            if (r < 0.5f) return lineTo(cx + r * cos(to), cy + r * sin(to))
+            for (k in 1..ARC_STEPS) {
+                val a = from + (to - from) * k / ARC_STEPS
+                xs += cx + r * cos(a)
+                ys += cy + r * sin(a)
+            }
+        }
+
+        fun build() = Centreline.of(xs.toFloatArray(), ys.toFloatArray())
     }
 
     /** A straight line, sampled finely so the taper stays smooth. */
@@ -145,20 +339,30 @@ object BranchGeometry {
         }
     }
 
-    /** The filled outline of [line] with the given half widths, each widened by [extra]. */
-    fun outline(line: Centreline, halves: FloatArray, extra: Float = 0f): Path = Path().apply {
-        val n = line.size
-        for (i in 0 until n) {
+    /**
+     * The filled outline of [line] with the given half widths, each widened by [extra], from point [from] up to
+     * and including point [to].
+     */
+    fun outline(line: Centreline, halves: FloatArray, extra: Float = 0f, from: Int = 0, to: Int = line.size - 1): Path = Path().apply {
+        for (i in from..to) {
             val h = (halves[i] + extra) * line.miter[i]
             val x = line.xs[i] + line.nx[i] * h
             val y = line.ys[i] + line.ny[i] * h
-            if (i == 0) moveTo(x, y) else lineTo(x, y)
+            if (i == from) moveTo(x, y) else lineTo(x, y)
         }
-        for (i in n - 1 downTo 0) {
+        for (i in to downTo from) {
             val h = (halves[i] + extra) * line.miter[i]
             lineTo(line.xs[i] - line.nx[i] * h, line.ys[i] - line.ny[i] * h)
         }
         close()
+    }
+
+    /** One side of [line]'s outline: [side] 1 or -1 times the half widths, from point [from] to [to]. */
+    fun edge(line: Centreline, halves: FloatArray, side: Float, from: Int = 0, to: Int = line.size - 1): Path = Path().apply {
+        for (i in from..to) {
+            val h = halves[i] * line.miter[i] * side
+            if (i == from) moveTo(line.xs[i] + line.nx[i] * h, line.ys[i] + line.ny[i] * h) else lineTo(line.xs[i] + line.nx[i] * h, line.ys[i] + line.ny[i] * h)
+        }
     }
 
     /** The size of a main topic box in [style] that fits padded content of size [w] by [h] inside its shape. */
@@ -167,27 +371,47 @@ object BranchGeometry {
         BranchStyle.PLANT -> Size(w + 1.6f * h, h * 1.25f)
         BranchStyle.LIGHTNING -> Size(w + 0.6f * h, h)
         BranchStyle.STRAIGHT -> Size(w + 0.5f * h, h)
+        BranchStyle.STEEL, BranchStyle.ROAD -> Size(w, h)
+        // Room for the rope around the edge.
+        BranchStyle.ROPE -> Size(w + 4f, h + 4f)
+        BranchStyle.SNAKE -> Size(w + 0.5f * h, h)
+        BranchStyle.ARROW -> Size(w + 2 * arrowPoint(h), h)
     }
+
+    /** How far the arrow-shaped box's point sticks out. */
+    private fun arrowPoint(h: Float): Float = (h * 0.37f).coerceAtMost(20f)
+
+    /** How deep the notch in the arrow-shaped box's back is. */
+    private fun arrowNotch(h: Float): Float = arrowPoint(h) * 0.55f
 
     /**
      * How far inside the left or right side of [r] a branch of half width [half] must end (or start) at the
      * box's vertical centre, so that the box covers the branch's flat end on both sides of its centreline.
+     * [outer] is the side facing away from the central topic; only the arrow-shaped box differs per side.
      */
-    fun mainBoxJoin(style: BranchStyle, r: Rect, half: Float): Float {
+    fun mainBoxJoin(style: BranchStyle, r: Rect, half: Float, outer: Boolean = false): Float {
         val h = r.height
         val need = half + JOIN_OVERLAP
         val depth = when (style) {
-            BranchStyle.STANDARD, BranchStyle.BLURRED -> {
-                // Inside the straight part of the side, or as deep as the rounded corner needs.
-                val beyond = (need - (h / 2 - BOX_RADIUS)).coerceIn(0f, BOX_RADIUS)
-                BOX_RADIUS - sqrt(BOX_RADIUS * BOX_RADIUS - beyond * beyond)
-            }
+            BranchStyle.STANDARD, BranchStyle.BLURRED -> roundedJoin(BOX_RADIUS, h, need)
+            BranchStyle.ROPE -> roundedJoin(ROPE_BOX_RADIUS, h, need)
+            BranchStyle.ROAD -> roundedJoin(ROAD_BOX_RADIUS, h, need)
+            BranchStyle.SNAKE -> roundedJoin(h / 2, h, need)
+            BranchStyle.STEEL -> 0f
             BranchStyle.STRAIGHT -> (need - (h / 2 - h / 4)).coerceAtLeast(0f)
             // The side slants by 0.3 h over the full height, so it lies 0.15 h in at the centre.
             BranchStyle.LIGHTNING -> h * 0.15f + 0.3f * need
             BranchStyle.PLANT -> plantTipDepth(r, need)
+            // Into the point, as far as it is wide enough; at the back, the arrow's tip ends in the notch.
+            BranchStyle.ARROW -> if (outer) arrowPoint(h) * need / (h / 2) else arrowNotch(h)
         }
         return depth + JOIN_OVERLAP
+    }
+
+    /** Inside the straight part of a side with corners of [radius], or as deep as the rounded corner needs. */
+    private fun roundedJoin(radius: Float, h: Float, need: Float): Float {
+        val beyond = (need - (h / 2 - radius)).coerceIn(0f, radius)
+        return radius - sqrt(radius * radius - beyond * beyond)
     }
 
     /** How far from its tip the leaf-shaped box is at least [half] high on each side of its centre. */
@@ -211,10 +435,26 @@ object BranchGeometry {
     /** The length of each pointed end of the leaf-shaped box in [r]. */
     private fun plantInner(r: Rect): Float = 0.8f * r.height / 1.25f
 
-    /** The outline of a main topic box in [style] filling [r]. */
-    fun mainBoxPath(style: BranchStyle, r: Rect): Path = Path().apply {
+    /** The outline of a main topic box in [style] filling [r]; an arrow-shaped box points [right] or left. */
+    fun mainBoxPath(style: BranchStyle, r: Rect, right: Boolean = true): Path = Path().apply {
         when (style) {
             BranchStyle.STANDARD, BranchStyle.BLURRED -> addRoundRect(r.toRectF(), BOX_RADIUS, BOX_RADIUS, Path.Direction.CW)
+            BranchStyle.STEEL -> addRect(r.toRectF(), Path.Direction.CW)
+            BranchStyle.ROPE -> addRoundRect(r.toRectF(), ROPE_BOX_RADIUS, ROPE_BOX_RADIUS, Path.Direction.CW)
+            BranchStyle.ROAD -> addRoundRect(r.toRectF(), ROAD_BOX_RADIUS, ROAD_BOX_RADIUS, Path.Direction.CW)
+            BranchStyle.SNAKE -> addRoundRect(r.toRectF(), r.height / 2, r.height / 2, Path.Direction.CW)
+            BranchStyle.ARROW -> {
+                val point = arrowPoint(r.height)
+                val notch = arrowNotch(r.height)
+                if (right) {
+                    moveTo(r.left, r.top); lineTo(r.right - point, r.top); lineTo(r.right, r.centerY)
+                    lineTo(r.right - point, r.bottom); lineTo(r.left, r.bottom); lineTo(r.left + notch, r.centerY)
+                } else {
+                    moveTo(r.right, r.top); lineTo(r.left + point, r.top); lineTo(r.left, r.centerY)
+                    lineTo(r.left + point, r.bottom); lineTo(r.right, r.bottom); lineTo(r.right - notch, r.centerY)
+                }
+                close()
+            }
             BranchStyle.PLANT -> {
                 // A leaf: pointed tips at the left and right, a gently bulging middle over the content.
                 val h = r.height

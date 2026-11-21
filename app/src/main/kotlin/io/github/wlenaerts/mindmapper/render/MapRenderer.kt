@@ -3,6 +3,7 @@ package io.github.wlenaerts.mindmapper.render
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
@@ -21,7 +22,9 @@ import io.github.wlenaerts.mindmapper.core.model.MindMap
 import io.github.wlenaerts.mindmapper.core.model.Side
 import io.github.wlenaerts.mindmapper.core.model.Topic
 import io.github.wlenaerts.mindmapper.core.model.subtreeIds
+import kotlin.math.atan2
 import kotlin.math.hypot
+import kotlin.random.Random
 
 /** Supplies decoded images for topic image paths; null while unavailable. */
 fun interface ImageSource {
@@ -103,7 +106,7 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
         val endX = box.left + BranchGeometry.mainBoxJoin(style, box, w1 / 2)
         drawLine(
             canvas, style, x0 = width * 0.04f, y0 = startY, x1 = endX, y1 = box.centerY, w0 = height * 0.11f, w1 = w1,
-            color = color, theme = theme, seed = SAMPLE_SEED, start = null, end = box, decorate = true,
+            color = color, theme = theme, seed = if (style == BranchStyle.ROPE) ROPE_SAMPLE_SEED else SAMPLE_SEED, start = null, end = box, decorate = true,
         )
         drawMainBox(canvas, style, box, color, theme)
     }
@@ -195,12 +198,17 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
 
     private fun drawBranch(canvas: Canvas, map: MindMap, parent: TopicBox, child: TopicBox, color: Int, theme: MapTheme, scale: Float) {
         val right = child.side != Side.LEFT
-        val (w0, w1) = branchWidths(map, child.depth)
+        var (w0, w1) = branchWidths(map, child.depth)
+        // A road keeps its width; a main road is at most three quarters as wide as its box is high.
+        if (child.style == BranchStyle.ROAD) {
+            if (child.depth == 1) w0 = minOf(w0, child.rect.height * 0.75f)
+            w1 = w0
+        }
         // Branches start and end just inside a main topic's box, deep enough that the box covers their flat ends.
         val (startX, startY) = when {
             parent.depth == 0 -> parent.rect.centerX to parent.rect.centerY
             parent.depth == 1 -> {
-                val join = BranchGeometry.mainBoxJoin(parent.style, parent.rect, w0 * scale / 2)
+                val join = BranchGeometry.mainBoxJoin(parent.style, parent.rect, w0 * scale / 2, outer = true)
                 (if (right) parent.rect.right - join else parent.rect.left + join) to parent.rect.centerY
             }
             else -> (if (right) parent.rect.right else parent.rect.left) to parent.rect.bottom
@@ -222,8 +230,9 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
 
     /**
      * Draws one tapered branch line in [style]. [start] and [end] are the boxes it connects, kept clear of
-     * decorations; [decorate] adds the plant style's leaves and tendrils. [scale] thickens the line and
-     * enlarges the plant parts without moving them.
+     * decorations; [decorate] marks a main branch, which gets the plant style's leaves and tendrils, the rope's
+     * full-size looping, the snake's head and the arrow's head and chevrons. [scale] thickens the line and
+     * enlarges the decorations without moving them.
      */
     private fun drawLine(
         canvas: Canvas, style: BranchStyle, x0: Float, y0: Float, x1: Float, y1: Float, w0: Float, w1: Float,
@@ -231,8 +240,15 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
         taper: Float = 1f, inside: Rect? = null, scale: Float = 1f,
     ) {
         val line = when (style) {
-            BranchStyle.STANDARD, BranchStyle.BLURRED, BranchStyle.PLANT -> BranchGeometry.curve(x0, y0, x1, y1)
+            BranchStyle.STANDARD, BranchStyle.BLURRED, BranchStyle.PLANT, BranchStyle.ARROW -> BranchGeometry.curve(x0, y0, x1, y1)
+            BranchStyle.ROPE -> BranchGeometry.curve(x0, y0, x1, y1, BranchGeometry.denseSteps(x0, y0, x1, y1))
+            BranchStyle.SNAKE -> {
+                val base = BranchGeometry.curve(x0, y0, x1, y1, BranchGeometry.denseSteps(x0, y0, x1, y1))
+                if (decorate) BranchGeometry.wave(base, (4f + w0 * 0.2f).coerceAtMost(10f), 70f, inside) else BranchGeometry.wave(base, 2.5f, 26f)
+            }
             BranchStyle.STRAIGHT -> BranchGeometry.straight(x0, y0, x1, y1)
+            BranchStyle.STEEL -> BranchGeometry.angular(x0, y0, x1, y1, inside)
+            BranchStyle.ROAD -> BranchGeometry.orthogonal(x0, y0, x1, y1, maxOf(12f, w0 * 0.8f), inside)
             BranchStyle.LIGHTNING -> {
                 val amplitude = (hypot(x1 - x0, y1 - y0) * 0.06f).coerceIn(3f, 10f) + w0 * 0.25f
                 BranchGeometry.zigzag(x0, y0, x1, y1, seed, amplitude, calm = inside)
@@ -240,14 +256,277 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
         }
         val halves = BranchGeometry.halfWidths(line, w0, w1, taper, inside)
         val shown = if (scale == 1f) halves else FloatArray(halves.size) { halves[it] * scale }
-        if (style == BranchStyle.BLURRED) {
-            val spread = 1f + w0 / 16f
-            drawGlow(canvas, color, theme) { ring -> canvas.drawPath(BranchGeometry.outline(line, shown, ring * spread), fill) }
+        when (style) {
+            BranchStyle.STEEL -> drawSteel(canvas, line, halves, shown, color)
+            BranchStyle.ROPE -> {
+                val loop = ropeLoop(line, halves, seed, decorate, inside)
+                if (loop == null) drawRope(canvas, line, shown, color) else {
+                    val looped = BranchGeometry.looping(line, shown, loop.start, loop.radius, loop.dir)
+                    drawRope(canvas, looped.line, looped.halves, color, looped.split)
+                }
+            }
+            BranchStyle.SNAKE -> drawSnake(canvas, line, shown, color, if (decorate) mainSnakeHead(w0 * scale) else null, inside)
+            BranchStyle.ROAD -> drawRoad(canvas, line, shown, color)
+            BranchStyle.ARROW -> drawArrow(canvas, line, shown, color, head = decorate, chevrons = decorate, inside = inside)
+            else -> {
+                if (style == BranchStyle.BLURRED) {
+                    val spread = 1f + w0 / 16f
+                    drawGlow(canvas, color, theme) { ring -> canvas.drawPath(BranchGeometry.outline(line, shown, ring * spread), fill) }
+                }
+                fill.color = color
+                canvas.drawPath(BranchGeometry.outline(line, shown), fill)
+                // Plant parts are placed along the unscaled line so they stay put while the line pulses.
+                if (style == BranchStyle.PLANT && decorate) drawPlant(canvas, line, halves, color, seed, start, end, scale)
+            }
         }
+    }
+
+    /** Where a rope's looping goes: [start] units along the line, [radius], curling to side [dir]. */
+    private class RopeLoop(val start: Float, val radius: Float, val dir: Float)
+
+    /**
+     * The [seed]-fixed looping of a rope along [line]: on the middle part of what shows outside [inside],
+     * large on a [main] branch and small on a subtopic's, or none when there is no room for a loop with a hole.
+     */
+    private fun ropeLoop(line: Centreline, halves: FloatArray, seed: Int, main: Boolean, inside: Rect?): RopeLoop? {
+        val lengths = BranchGeometry.lengths(line)
+        val from = lengths[line.exitIndex(inside)]
+        val visible = lengths.last() - from
+        val random = Random(seed)
+        val wanted = if (main) maxOf(halves[0] * 2.2f, 13f + 9f * random.nextFloat()) else 7f
+        val radius = wanted.coerceAtMost(visible / 5f)
+        val start = from + visible * (0.25f + 0.25f * random.nextFloat())
+        val dir = if (random.nextBoolean()) 1f else -1f
+        return if (radius < maxOf(6f, halves[0] * 2.2f)) null else RopeLoop(start, radius, dir)
+    }
+
+    /**
+     * A steel truss: two chords along the edges, braces zigzagging between them with rivets at the joints, and
+     * a bolted plate on every corner. Joints are spaced along the unscaled [halves], so they stay put while the
+     * [shown] line pulses.
+     */
+    private fun drawSteel(canvas: Canvas, line: Centreline, halves: FloatArray, shown: FloatArray, color: Int) {
+        val dark = mix(color, BLACK, 0.35f)
+        val width = maxOf(1.2f, shown[0] * 0.22f)
+        stroke.color = color
+        stroke.strokeWidth = width
+        canvas.drawPath(BranchGeometry.edge(line, shown, 1f), stroke)
+        canvas.drawPath(BranchGeometry.edge(line, shown, -1f), stroke)
+        val placed = BranchGeometry.Walker(line, halves)
+        val drawn = BranchGeometry.Walker(line, shown)
+        val joints = ArrayList<BranchGeometry.Walker.Sample>()
+        var s = 0f
+        while (s <= placed.total) {
+            joints += drawn.at(s)
+            s += maxOf(7f, placed.at(s).h * 1.9f)
+        }
+        val braces = Path()
+        for (i in 1 until joints.size) {
+            val a = joints[i - 1]
+            val b = joints[i]
+            val side = if (i % 2 == 1) 1f else -1f
+            braces.moveTo(a.x + a.nx * a.h * side, a.y + a.ny * a.h * side)
+            braces.lineTo(b.x - b.nx * b.h * side, b.y - b.ny * b.h * side)
+        }
+        stroke.strokeWidth = width * 0.75f
+        canvas.drawPath(braces, stroke)
+        for (i in 1 until line.size - 1) {
+            if (line.miter[i] > 1.02f) drawGusset(canvas, line.xs[i], line.ys[i], shown[i] * 1.25f, width, color, dark)
+        }
+        fill.color = dark
+        for (q in joints) for (side in floatArrayOf(1f, -1f)) canvas.drawCircle(q.x + q.nx * q.h * side, q.y + q.ny * q.h * side, width * 0.7f, fill)
+    }
+
+    /** A hexagonal plate of [radius] with three bolts, where two steel pieces meet at a corner. */
+    private fun drawGusset(canvas: Canvas, x: Float, y: Float, radius: Float, width: Float, color: Int, dark: Int) {
+        val plate = Path()
+        for (k in 0 until 6) {
+            val a = (k * 60 + 30) * Math.PI / 180
+            val px = x + kotlin.math.cos(a).toFloat() * radius
+            val py = y + kotlin.math.sin(a).toFloat() * radius
+            if (k == 0) plate.moveTo(px, py) else plate.lineTo(px, py)
+        }
+        plate.close()
         fill.color = color
-        canvas.drawPath(BranchGeometry.outline(line, shown), fill)
-        // Plant parts are placed along the unscaled line so they stay put while the line pulses.
-        if (style == BranchStyle.PLANT && decorate) drawPlant(canvas, line, halves, color, seed, start, end, scale)
+        canvas.drawPath(plate, fill)
+        stroke.color = dark
+        stroke.strokeWidth = 1f
+        canvas.drawPath(plate, stroke)
+        fill.color = mix(color, WHITE, 0.6f)
+        for (k in 0 until 3) {
+            val a = k * 2 * Math.PI / 3
+            canvas.drawCircle(x + kotlin.math.cos(a).toFloat() * radius * 0.5f, y + kotlin.math.sin(a).toFloat() * radius * 0.5f, maxOf(0.8f, width * 0.55f), fill)
+        }
+    }
+
+    /**
+     * A twisted rope: the body with dark edges, and slanted dark strands with lighter ones beside them. The
+     * part after [split] is drawn over the part before it, so a looping crosses over itself.
+     */
+    private fun drawRope(canvas: Canvas, line: Centreline, halves: FloatArray, color: Int, split: Int = line.size - 1) {
+        val dark = mix(color, BLACK, 0.35f)
+        val light = mix(color, WHITE, 0.35f)
+        val walker = BranchGeometry.Walker(line, halves)
+        val strand = Path()
+        for ((from, to) in listOf(0 to split, split to line.size - 1)) {
+            if (to <= from) continue
+            fill.color = color
+            canvas.drawPath(BranchGeometry.outline(line, halves, 0f, from, to), fill)
+            stroke.color = dark
+            stroke.strokeWidth = 0.8f
+            canvas.drawPath(BranchGeometry.edge(line, halves, 1f, from, to), stroke)
+            canvas.drawPath(BranchGeometry.edge(line, halves, -1f, from, to), stroke)
+            stroke.strokeCap = Paint.Cap.BUTT
+            var s = walker.lengths[from]
+            while (s < walker.lengths[to]) {
+                val h = walker.at(s).h
+                val period = maxOf(4f, h * 1.5f)
+                for ((shade, shift, thickness) in listOf(Triple(dark, 0f, 0.45f), Triple(light, period * 0.45f, 0.18f))) {
+                    strand.rewind()
+                    for (k in 0..4) {
+                        val p = walker.at(s + shift + period * 0.8f * k / 4)
+                        val across = p.h * (0.92f - 1.84f * k / 4)
+                        if (k == 0) strand.moveTo(p.x + p.nx * across, p.y + p.ny * across) else strand.lineTo(p.x + p.nx * across, p.y + p.ny * across)
+                    }
+                    stroke.color = shade
+                    stroke.strokeWidth = maxOf(0.8f, h * thickness)
+                    canvas.drawPath(strand, stroke)
+                }
+                s += period
+            }
+            stroke.strokeCap = Paint.Cap.ROUND
+        }
+    }
+
+    /** The size of a snake's head: [length] along the body, [width] across. */
+    private class SnakeHead(val length: Float, val width: Float)
+
+    /** A main branch's snake head, sized from the branch's starting width [w0]. */
+    private fun mainSnakeHead(w0: Float) = SnakeHead(maxOf(14f, w0 * 1.7f), maxOf(10f, w0 * 1.15f))
+
+    /**
+     * A snake: the body with a row of dark scales, ending in [head] (if any) whose tongue reaches the end of
+     * [line]. A head too long for the part outside [inside] is made smaller.
+     */
+    private fun drawSnake(canvas: Canvas, line: Centreline, halves: FloatArray, color: Int, head: SnakeHead?, inside: Rect?) {
+        val walker = BranchGeometry.Walker(line, halves)
+        val from = walker.lengths[line.exitIndex(inside)]
+        val room = walker.total - from
+        var length = head?.length ?: 0f
+        var width = head?.width ?: 0f
+        var tongue = maxOf(5f, length * 0.22f)
+        if (head != null && length + tongue > room * 0.6f) {
+            val shrink = room * 0.6f / (length + tongue)
+            length *= shrink; width *= shrink; tongue *= shrink
+        }
+        val bodyEnd = if (head == null) walker.total else walker.total - length - tongue
+        fill.color = color
+        canvas.drawPath(BranchGeometry.outline(line, halves, 0f, 0, walker.indexAt(bodyEnd)), fill)
+        if (halves[0] >= 3f) {
+            val scales = Path()
+            var s = from + 4f
+            while (s < bodyEnd - 2f) {
+                val q = walker.at(s)
+                val d = q.h * 0.55f
+                scales.moveTo(q.x + q.tx * d, q.y + q.ty * d)
+                scales.lineTo(q.x + q.nx * d * 0.8f, q.y + q.ny * d * 0.8f)
+                scales.lineTo(q.x - q.tx * d, q.y - q.ty * d)
+                scales.lineTo(q.x - q.nx * d * 0.8f, q.y - q.ny * d * 0.8f)
+                scales.close()
+                s += maxOf(5f, q.h * 1.3f)
+            }
+            fill.color = mix(color, BLACK, 0.4f)
+            canvas.drawPath(scales, fill)
+        }
+        if (head == null) return
+        val neck = walker.at(bodyEnd)
+        val last = line.size - 1
+        val angle = atan2(line.ys[last] - neck.y, line.xs[last] - neck.x)
+        drawSnakeHead(canvas, neck.x, neck.y, angle, neck.h, length, width, tongue, color)
+    }
+
+    /** A snake's head at ([x], [y]) looking in direction [angle], widening from a neck of half width [neck]. */
+    private fun drawSnakeHead(canvas: Canvas, x: Float, y: Float, angle: Float, neck: Float, length: Float, width: Float, tongue: Float, color: Int) {
+        canvas.save()
+        canvas.translate(x, y)
+        canvas.rotate(Math.toDegrees(angle.toDouble()).toFloat())
+        stroke.color = mix(color, BLACK, 0.55f)
+        stroke.strokeWidth = maxOf(1.2f, width * 0.08f)
+        canvas.drawPath(Path().apply {
+            moveTo(length * 0.9f, 0f); lineTo(length + tongue * 0.7f, 0f); lineTo(length + tongue, -tongue * 0.35f)
+            moveTo(length + tongue * 0.7f, 0f); lineTo(length + tongue, tongue * 0.35f)
+        }, stroke)
+        fill.color = color
+        canvas.drawPath(Path().apply {
+            moveTo(-1f, -neck)
+            cubicTo(length * 0.2f, -width * 0.62f, length * 0.7f, -width * 0.6f, length, 0f)
+            cubicTo(length * 0.7f, width * 0.6f, length * 0.2f, width * 0.62f, -1f, neck)
+            close()
+        }, fill)
+        fill.color = mix(color, BLACK, 0.4f)
+        for (i in 0 until 3) canvas.drawCircle(length * (0.25f + i * 0.15f), 0f, width * 0.08f, fill)
+        for (side in floatArrayOf(-1f, 1f)) {
+            fill.color = WHITE
+            canvas.drawCircle(length * 0.62f, side * width * 0.24f, maxOf(1.4f, width * 0.12f), fill)
+            fill.color = 0xFF111111.toInt()
+            canvas.drawCircle(length * 0.66f, side * width * 0.24f, maxOf(0.8f, width * 0.065f), fill)
+        }
+        canvas.restore()
+    }
+
+    /** A road: slightly darkened surface, white edge lines when there is room, and a dashed centre line. */
+    private fun drawRoad(canvas: Canvas, line: Centreline, halves: FloatArray, color: Int) {
+        fill.color = mix(color, BLACK, 0.1f)
+        canvas.drawPath(BranchGeometry.outline(line, halves), fill)
+        val h = halves[0]
+        stroke.color = WHITE
+        stroke.strokeCap = Paint.Cap.BUTT
+        if (h >= 4f) {
+            stroke.strokeWidth = maxOf(0.8f, h * 0.09f)
+            canvas.drawPath(BranchGeometry.edge(line, halves, 0.78f), stroke)
+            canvas.drawPath(BranchGeometry.edge(line, halves, -0.78f), stroke)
+        }
+        stroke.strokeWidth = maxOf(0.7f, h * 0.1f)
+        stroke.pathEffect = DashPathEffect(floatArrayOf(maxOf(3f, h * 1.1f), maxOf(2.5f, h * 0.8f)), 0f)
+        canvas.drawPath(BranchGeometry.edge(line, halves, 0f), stroke)
+        stroke.pathEffect = null
+        stroke.strokeCap = Paint.Cap.ROUND
+    }
+
+    /** An arrow: the shaft, with a [head] at the end of [line] and white [chevrons] along the part outside [inside]. */
+    private fun drawArrow(canvas: Canvas, line: Centreline, halves: FloatArray, color: Int, head: Boolean, chevrons: Boolean, inside: Rect?) {
+        fill.color = color
+        if (!head) {
+            canvas.drawPath(BranchGeometry.outline(line, halves), fill)
+            return
+        }
+        val walker = BranchGeometry.Walker(line, halves)
+        val tip = halves.last()
+        val length = maxOf(8f, tip * 3.4f)
+        val half = maxOf(5f, tip * 2.6f)
+        val stop = (walker.total - length).coerceAtLeast(0f)
+        canvas.drawPath(BranchGeometry.outline(line, halves, 0f, 0, walker.indexAt(stop)), fill)
+        val p = walker.at(stop)
+        val last = line.size - 1
+        canvas.drawPath(Path().apply {
+            moveTo(p.x + p.nx * half, p.y + p.ny * half); lineTo(line.xs[last], line.ys[last]); lineTo(p.x - p.nx * half, p.y - p.ny * half); close()
+        }, fill)
+        if (!chevrons) return
+        stroke.color = withAlpha(WHITE, 0.82f)
+        stroke.strokeJoin = Paint.Join.ROUND
+        var s = walker.lengths[line.exitIndex(inside)] + 18f
+        while (s < stop - 10f) {
+            val r = walker.at(s)
+            val d = r.h * 0.55f
+            stroke.strokeWidth = maxOf(1f, r.h * 0.22f)
+            canvas.drawPath(Path().apply {
+                moveTo(r.x - r.tx * d + r.nx * d, r.y - r.ty * d + r.ny * d)
+                lineTo(r.x + r.tx * d * 0.4f, r.y + r.ty * d * 0.4f)
+                lineTo(r.x - r.tx * d - r.nx * d, r.y - r.ty * d - r.ny * d)
+            }, stroke)
+            s += 24f
+        }
+        stroke.strokeJoin = Paint.Join.MITER
     }
 
     /** Draws the soft rings of the blurred style, widest and faintest first; [ring] gets the ring's spread. */
@@ -305,6 +584,21 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
                 stroke.color = color
                 canvas.drawPath(BranchGeometry.zigzagUnderline(r.left, r.right, r.bottom, 2.2f + width / 2), stroke)
             }
+            else -> {
+                // Runs from where the branch arrives to the outer end, like the branch it continues.
+                val right = box.side != Side.LEFT
+                val inner = if (right) r.left else r.right
+                val outer = if (right) r.right else r.left
+                val line = BranchGeometry.sampledLine(inner, r.bottom, outer, r.bottom)
+                fun even(half: Float) = FloatArray(line.size) { half }
+                when (box.style) {
+                    BranchStyle.STEEL -> maxOf(width, 2.5f).let { drawSteel(canvas, line, even(it), even(it), color) }
+                    BranchStyle.ROPE -> drawRope(canvas, line, even(maxOf(width * 0.9f, 2.2f)), color)
+                    BranchStyle.SNAKE -> drawSnake(canvas, BranchGeometry.wave(line, 2f, 26f), even(width / 2), color, SnakeHead(10f * scale, 7f * scale), null)
+                    BranchStyle.ROAD -> drawRoad(canvas, line, even((if (box.depth == 2) 4.5f else 2.5f) * scale / 2), color)
+                    else -> drawArrow(canvas, line, even(width / 2), color, head = true, chevrons = false, inside = null)
+                }
+            }
         }
     }
 
@@ -312,12 +606,12 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
      * The box of a main topic in [style], with the blurred style's glow around it. A [scale] above 1 grows
      * an outline in the box colour around it, so the box pulses with its branch without moving its text.
      */
-    private fun drawMainBox(canvas: Canvas, style: BranchStyle, r: Rect, color: Int, theme: MapTheme, scale: Float = 1f) {
+    private fun drawMainBox(canvas: Canvas, style: BranchStyle, r: Rect, color: Int, theme: MapTheme, scale: Float = 1f, right: Boolean = true) {
         if (style == BranchStyle.BLURRED) {
             drawGlow(canvas, color, theme) { ring -> canvas.drawRoundRect(r.inset(ring * 1.6f).toRectF(), 10f + ring, 10f + ring, fill) }
         }
         fill.color = color
-        val path = BranchGeometry.mainBoxPath(style, r)
+        val path = BranchGeometry.mainBoxPath(style, r, right)
         canvas.drawPath(path, fill)
         if (scale > 1f) {
             stroke.color = color
@@ -325,6 +619,35 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
             stroke.strokeJoin = Paint.Join.ROUND
             canvas.drawPath(path, stroke)
             stroke.strokeJoin = Paint.Join.MITER
+        }
+        when (style) {
+            BranchStyle.STEEL -> {
+                // An inner frame and a rivet in every corner.
+                stroke.color = mix(color, BLACK, 0.35f)
+                stroke.strokeWidth = 2f
+                canvas.drawRect(r.inset(-3f).toRectF(), stroke)
+                fill.color = withAlpha(WHITE, 0.8f)
+                for (x in floatArrayOf(r.left + 7f, r.right - 7f)) for (y in floatArrayOf(r.top + 7f, r.bottom - 7f)) canvas.drawCircle(x, y, 2f, fill)
+            }
+            BranchStyle.ROPE -> {
+                val edge = BranchGeometry.ropeBoxLine(r)
+                drawRope(canvas, edge, FloatArray(edge.size) { 3f }, mix(color, BLACK, 0.12f))
+            }
+            BranchStyle.SNAKE -> {
+                stroke.color = mix(color, BLACK, 0.35f)
+                stroke.strokeWidth = 1.5f
+                stroke.pathEffect = DashPathEffect(floatArrayOf(3f, 3f), 0f)
+                val inner = r.inset(-4f)
+                canvas.drawRoundRect(inner.toRectF(), inner.height / 2, inner.height / 2, stroke)
+                stroke.pathEffect = null
+            }
+            BranchStyle.ROAD -> {
+                // Framed like a road sign.
+                stroke.color = WHITE
+                stroke.strokeWidth = 2f
+                canvas.drawRoundRect(r.inset(-3.5f).toRectF(), 4f, 4f, stroke)
+            }
+            else -> Unit
         }
     }
 
@@ -349,7 +672,7 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
             }
             1 -> {
                 val color = branchColor!!
-                drawMainBox(canvas, box.style, r, color, theme, scale)
+                drawMainBox(canvas, box.style, r, color, theme, scale, right = box.side != Side.LEFT)
                 textColor = topic.textColor ?: contrastingTextColor(color)
             }
             else -> textColor = topic.textColor ?: theme.text
@@ -441,9 +764,24 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
 fun Rect.toRectF(): RectF = RectF(left, top, right, bottom)
 
 private const val SAMPLE_SEED = 7
+/** Gives the rope sample a looping that curls upwards, so it stays inside the tile. */
+private const val ROPE_SAMPLE_SEED = 8
 private const val GLOW_SPREAD = 5f
 /** Outline width added around a pulsing main box per unit of scale above 1. */
 private const val MAIN_BOX_PULSE = 10f
+
+private const val BLACK = 0xFF000000.toInt()
+private const val WHITE = 0xFFFFFFFF.toInt()
+
+/** Opaque [color] moved a fraction [f] of the way towards [other]. */
+private fun mix(color: Int, other: Int, f: Float): Int {
+    fun channel(shift: Int): Int {
+        val a = (color shr shift) and 0xFF
+        val b = (other shr shift) and 0xFF
+        return (a + (b - a) * f).toInt().coerceIn(0, 255) shl shift
+    }
+    return (0xFF shl 24) or channel(16) or channel(8) or channel(0)
+}
 
 /** [color] with its alpha replaced by [alpha] (0 to 1). */
 private fun withAlpha(color: Int, alpha: Float): Int = (color and 0x00FFFFFF) or ((alpha * 255).toInt().coerceIn(0, 255) shl 24)

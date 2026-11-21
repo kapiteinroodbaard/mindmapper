@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
 import androidx.compose.ui.geometry.Offset
@@ -167,9 +168,10 @@ class ColourAndImageToolsTest {
                 renderer = renderer, onPick = {}, onColor = { picked = it }, onDismiss = {},
             )
         }
-        compose.onNodeWithTag("branch_colour_3").performClick()
+        // The colours sit below the style tiles, so the dialog may need scrolling to reach them.
+        compose.onNodeWithTag("branch_colour_3").performScrollTo().performClick()
         assertEquals(ColorSwatches[3], picked)
-        compose.onNodeWithTag("branch_colour_auto").performClick()
+        compose.onNodeWithTag("branch_colour_auto").performScrollTo().performClick()
         assertEquals(null, picked)
     }
 }
