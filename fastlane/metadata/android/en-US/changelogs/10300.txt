@@ -1,0 +1,1 @@
+Five new branch styles: steel, rope, snake, road and arrow. In presentation mode the other main branches now fade around the scheduled one, with the previous and next branch still readable, so it stands out even when zoomed out.
