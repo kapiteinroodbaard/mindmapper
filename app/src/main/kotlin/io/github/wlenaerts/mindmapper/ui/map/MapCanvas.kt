@@ -42,7 +42,8 @@ const val MAX_ZOOM = 4f
 /**
  * Draws [map] with pan and pinch zoom. When [onDrop] is given, long-press-and-drag on a topic moves it.
  * [viewport] is in pixels; the caller owns it so it can fit or animate it. The branch of main topic
- * [highlightId], subtopics included, slowly grows thicker and thinner again.
+ * [highlightId], subtopics included, slowly grows thicker and thinner again. With [neighbourIds], the other
+ * main branches fade while one is highlighted: those main branches a little, the rest further.
  */
 @Composable
 fun MapCanvas(
@@ -55,6 +56,7 @@ fun MapCanvas(
     modifier: Modifier = Modifier,
     selectedId: String? = null,
     highlightId: String? = null,
+    neighbourIds: Set<String>? = null,
     description: String = "",
     onTap: (topicId: String?) -> Unit = {},
     onDoubleTap: (topicId: String) -> Unit = {},
@@ -155,7 +157,7 @@ fun MapCanvas(
             native.save()
             native.translate(viewport.offsetX, viewport.offsetY)
             native.scale(viewport.scale, viewport.scale)
-            renderer.draw(native, map, layout, theme, images, selectedId = selectedId, dropTarget = dropTarget, highlightId = highlightId, highlightScale = highlightScale)
+            renderer.draw(native, map, layout, theme, images, selectedId = selectedId, dropTarget = dropTarget, highlightId = highlightId, highlightScale = highlightScale, neighbourIds = neighbourIds)
             draggedId?.let { id ->
                 val dx = (dragNow.x - dragStart.x) / viewport.scale
                 val dy = (dragNow.y - dragStart.y) / viewport.scale

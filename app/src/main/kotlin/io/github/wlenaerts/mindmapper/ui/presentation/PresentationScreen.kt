@@ -127,6 +127,7 @@ fun PresentationScreen(viewModel: EditorViewModel, onExit: () -> Unit) {
                 description = stringResource(R.string.mindmap_canvas),
                 onTap = { id -> if (id == null || id == map.root.id) showOverview() else focus(id) },
                 highlightId = scheduledId,
+                neighbourIds = scheduledId?.let(schedule::neighboursOf),
             )
         }
         if (!schedule.isEmpty) {

@@ -61,24 +61,46 @@ class MapRenderer(private val context: Context, val metrics: TopicMetrics = Topi
         hiddenIds: Set<String> = emptySet(),
         highlightId: String? = null,
         highlightScale: Float = 1f,
+        neighbourIds: Set<String>? = null,
     ) {
         val topics = map.topics().associateBy { it.id }
         val colors = branchColors(map, layout, theme)
         // The highlighted main branch and all its subtopics are drawn [highlightScale] times as thick.
         val highlighted = highlightId?.takeIf { layout[it]?.depth == 1 }?.let { id -> map.find(id)?.let(::subtreeIds) }.orEmpty()
+        // With [neighbourIds], the other main branches fade: the neighbours a little, the rest further.
+        val alphas = if (highlighted.isEmpty() || neighbourIds == null) emptyMap() else buildMap {
+            for (main in map.root.children) {
+                if (main.id == highlightId) continue
+                val alpha = if (main.id in neighbourIds) NEIGHBOUR_ALPHA else FAR_ALPHA
+                subtreeIds(main).forEach { put(it, alpha) }
+            }
+        }
         // Branches first, so topics are drawn on top of them.
-        for (box in layout.boxes) {
-            if (box.depth == 0 || box.topicId in hiddenIds) continue
-            val parent = layout[box.parentId ?: continue] ?: continue
+        drawFaded(canvas, layout.boxes, alphas) { box ->
+            if (box.depth == 0 || box.topicId in hiddenIds) return@drawFaded
+            val parent = layout[box.parentId ?: return@drawFaded] ?: return@drawFaded
             drawBranch(canvas, map, parent, box, colors.getValue(box.topicId), theme, if (box.topicId in highlighted) highlightScale else 1f)
         }
-        for (box in layout.boxes) {
-            if (box.topicId in hiddenIds) continue
-            val topic = topics[box.topicId] ?: continue
+        drawFaded(canvas, layout.boxes, alphas) { box ->
+            if (box.topicId in hiddenIds) return@drawFaded
+            val topic = topics[box.topicId] ?: return@drawFaded
             drawTopic(canvas, map, topic, box, colors[box.topicId], theme, images, layout.showsDurations, if (box.topicId in highlighted) highlightScale else 1f)
         }
         selectedId?.let { id -> layout[id]?.let { drawSelection(canvas, it.rect, theme.selection) } }
         dropTarget?.let { target -> layout[target.anchorId]?.let { drawDropIndicator(canvas, it, target, theme.dropIndicator) } }
+    }
+
+    /**
+     * Calls [drawBox] for every box, faded ones first, each fade level in one layer of its [alphas] value so
+     * overlapping parts of a faded branch do not show through each other. Boxes without an alpha are opaque.
+     */
+    private inline fun drawFaded(canvas: Canvas, boxes: List<TopicBox>, alphas: Map<String, Int>, drawBox: (TopicBox) -> Unit) {
+        for (alpha in alphas.values.toSortedSet()) {
+            canvas.saveLayerAlpha(null, alpha)
+            boxes.forEach { if (alphas[it.topicId] == alpha) drawBox(it) }
+            canvas.restore()
+        }
+        boxes.forEach { if (it.topicId !in alphas) drawBox(it) }
     }
 
     /** Draws only topic [topicId], moved by ([dx], [dy]); used for the drag ghost. */
@@ -769,6 +791,10 @@ private const val ROPE_SAMPLE_SEED = 8
 private const val GLOW_SPREAD = 5f
 /** Outline width added around a pulsing main box per unit of scale above 1. */
 private const val MAIN_BOX_PULSE = 10f
+/** Opacity of the main branches scheduled next to the highlighted one: faded, still readable. */
+private const val NEIGHBOUR_ALPHA = 140
+/** Opacity of all other main branches while one is highlighted. */
+private const val FAR_ALPHA = 46
 
 private const val BLACK = 0xFF000000.toInt()
 private const val WHITE = 0xFFFFFFFF.toInt()

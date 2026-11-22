@@ -81,14 +81,14 @@ class DurationRenderTest {
         }
     }
 
-    private fun render(map: MindMap, theme: MapTheme, highlightId: String?, highlightScale: Float = 1.8f): Bitmap {
+    private fun render(map: MindMap, theme: MapTheme, highlightId: String?, highlightScale: Float = 1.8f, neighbourIds: Set<String>? = null): Bitmap {
         val layout = renderer.layout(map)
         val b = layout.bounds
         val bitmap = Bitmap.createBitmap((b.width + 80).toInt(), (b.height + 80).toInt(), Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(theme.background)
         canvas.translate(40 - b.left, 40 - b.top)
-        renderer.draw(canvas, map, layout, theme, { null }, highlightId = highlightId, highlightScale = highlightScale)
+        renderer.draw(canvas, map, layout, theme, { null }, highlightId = highlightId, highlightScale = highlightScale, neighbourIds = neighbourIds)
         return bitmap
     }
 
@@ -137,6 +137,32 @@ class DurationRenderTest {
                 assertTrue("$style main topic box grows with its branch", changedAroundBox > 50)
                 if (style == BranchStyle.PLANT) assertTrue("plant leaf at the subtopic end grows", changedAtSubtopicEnd > 20)
             }
+        }
+    }
+
+    @Test
+    fun neighboursFadeLessThanTheOtherMainBranches() {
+        val m = MindMap(root = Topic(id = "root", text = "Centre", children = listOf("a", "b", "c", "d").map { Topic(id = it, text = it.uppercase()) }))
+        val layout = renderer.layout(m)
+        val dx = 40 - layout.bounds.left
+        val dy = 40 - layout.bounds.top
+        for (theme in listOf(MapTheme.Light, MapTheme.Dark)) {
+            val plainBitmap = render(m, theme, null)
+            assertTrue("without neighbours nothing fades", sameBitmaps(render(m, theme, "c", highlightScale = 1f), render(m, theme, "c", highlightScale = 1f, neighbourIds = null)))
+            val faded = render(m, theme, "c", highlightScale = 1f, neighbourIds = setOf("b", "d"))
+            fun difference(id: String): Long {
+                val r = layout[id]!!.rect
+                var sum = 0L
+                for (y in (r.top + dy).toInt()..(r.bottom + dy).toInt()) for (x in (r.left + dx).toInt()..(r.right + dx).toInt()) {
+                    val a = plainBitmap.getPixel(x, y)
+                    val b = faded.getPixel(x, y)
+                    sum += listOf(16, 8, 0).sumOf { kotlin.math.abs((a shr it and 0xFF) - (b shr it and 0xFF)) }
+                }
+                return sum
+            }
+            assertEquals("the highlighted branch is not faded", 0L, difference("c"))
+            assertTrue("a neighbour fades", difference("b") > 0)
+            assertTrue("the far branch fades more than a neighbour", difference("a") > difference("b"))
         }
     }
 }

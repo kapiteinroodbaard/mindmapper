@@ -119,11 +119,19 @@ zooms, pans or focuses on topics. Leaving presentation mode SHALL reset it.
 While the elapsed time is within a main branch's time slot, that main branch SHALL be the scheduled
 branch: its branch lines, including those of all its subtopics, SHALL slowly and repeatedly grow thicker
 and thinner again on the map, and the timer SHALL show
-its text next to the elapsed time. Only presentation mode SHALL show the highlight.
+its text next to the elapsed time. The other main branches, with their subtopics, SHALL be faded: the
+main branches with the slots just before and just after the scheduled one SHALL stay readable but
+clearly fainter, and all other main branches SHALL be faded further. The first and last slot SHALL
+each have one such neighbour. Only presentation mode SHALL show the highlight and the fading.
 
 #### Scenario: Highlight follows the clock
 - **WHEN** the timer passes 3:00 in the map with A (0:00-3:00) and C (3:00-8:00)
 - **THEN** the pulsing moves from A's branch to C's branch and the timer shows C's text
+
+#### Scenario: Neighbours fade less
+- **WHEN** the elapsed time is in C's slot in the map with A (0:00-3:00), B (no duration), C (3:00-8:00)
+  and D (8:00-16:00)
+- **THEN** A and D are faded a little, B is faded further and C is shown in full
 
 #### Scenario: Focused on another branch
 - **WHEN** the presenter is focused on branch D while the elapsed time is in C's slot
@@ -135,7 +143,7 @@ its text next to the elapsed time. Only presentation mode SHALL show the highlig
 
 ### Requirement: Over time
 Once the elapsed time reaches the total, the timer SHALL keep counting, SHALL be shown in red and SHALL
-show no branch name, and no main branch SHALL be highlighted.
+show no branch name, and no main branch SHALL be highlighted or faded.
 
 #### Scenario: Past the total
 - **WHEN** the total is 16 minutes and the timer reaches 16:05

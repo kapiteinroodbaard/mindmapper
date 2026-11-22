@@ -44,4 +44,13 @@ class ScheduleTest {
         assertNull(s.scheduledAt(960))
         assertNull(s.scheduledAt(-1))
     }
+
+    @Test
+    fun neighboursAreTheAdjacentSlotsWithoutWrapping() {
+        val s = timed.schedule()
+        assertEquals(setOf("C"), s.neighboursOf("A"))
+        assertEquals(setOf("A", "D"), s.neighboursOf("C"))
+        assertEquals(setOf("C"), s.neighboursOf("D"))
+        assertTrue(s.neighboursOf("B").isEmpty())
+    }
 }

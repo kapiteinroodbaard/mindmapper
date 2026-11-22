@@ -17,6 +17,13 @@ data class Schedule(val slots: List<Slot>) {
     /** The main branch scheduled at [elapsedSeconds], or null before 0 or at and beyond the total. */
     fun scheduledAt(elapsedSeconds: Long): String? =
         slots.firstOrNull { elapsedSeconds >= it.startSeconds && elapsedSeconds < it.endSeconds }?.topicId
+
+    /** The main branches scheduled just before and just after [topicId]; empty when it has no slot. */
+    fun neighboursOf(topicId: String): Set<String> {
+        val index = slots.indexOfFirst { it.topicId == topicId }
+        if (index < 0) return emptySet()
+        return listOfNotNull(slots.getOrNull(index - 1), slots.getOrNull(index + 1)).mapTo(LinkedHashSet()) { it.topicId }
+    }
 }
 
 fun MindMap.schedule(): Schedule {
